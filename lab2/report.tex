@@ -1,0 +1,59 @@
+\documentclass[10pt,a4paper]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{titling}
+\usepackage{xeCJK}
+\usepackage{indentfirst}
+\usepackage{enumitem}
+\setCJKmainfont{AR PL UMing TW}
+
+\title{WNFA Lab 2 Report}
+\author{Group 5: & B02902125吳哲宇 & B01902010李紹詮 & B01902048王欣維 \\
+    & B01902085邱劭同 & B01902138蔡存哲}
+\preauthor{\begin{center}\begin{tabular}{lccr}}
+\postauthor{\end{tabular}\end{center}}
+\date{}
+
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\lhead{\bfseries\thetitle}
+\chead{}
+\rhead{Group 5}
+\lfoot{}
+\cfoot{}
+\rfoot{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\footrulewidth}{0.4pt}
+
+\setlength{\parindent}{2em}
+\setlength{\parskip}{.4em}
+
+\begin{document}
+\maketitle
+\thispagestyle{fancy}
+
+\section*{工作原理}
+利用JJY/WWVB訊號讓電波鐘校正時間。JJY/WWVB time code 是有一定格式的時間表示法，每一秒鐘傳送一個訊號，利用duty cycle來區分0、1、Marker，而完整的時間資料需要用一分鐘來傳送。
+
+產生訊號的部分，以電流產生磁場，產生對應訊號的原理，在Zigduino上以CTC mode產生40/60kHz的方波，並按照JJY/WWVB time code的規則產生一連串的電流，再將電線纏繞多圈以增強磁場強度，使電波鐘順利收到訊號並同步時間。
+\section*{遇到的問題}
+\begin{enumerate}
+    \item 用固定的pattern測試時，電波鐘對時間訊號沒有反應。
+    \item 輸入只有年月日，但JJY要求需要有星期欄位。
+\end{enumerate}
+
+\section*{解決方法}
+\begin{enumerate}
+    \item 電波鐘本身對錯誤的時間訊號不會有反應，一開始的code將時間固定，每次傳送出去的都是相同的時間，而電波鐘對於不會增加的時間訊號，會視為錯誤的訊號因此不會進行同步，而後來將傳送的時間改成像真實世界一樣，會不斷的增加後，電波鐘就成功的同步了。
+    \item 手寫萬年曆。
+\end{enumerate}
+
+\section*{工作分配}
+\begin{itemize}[leftmargin=!,itemindent=-4em]
+    \item 吳哲宇：寫輸入處理和萬年曆計算
+    \item 李紹詮：實作JJY，程式碼架構
+    \item 王欣維：報告統整
+    \item 邱劭同：實作WWVB
+    \item 蔡存哲：意見領袖
+\end{itemize}
+
+\end{document}

@@ -1,0 +1,71 @@
+\documentclass[10pt,a4paper]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{titling}
+\usepackage{xeCJK}
+\usepackage{indentfirst}
+\usepackage{enumitem}
+\setCJKmainfont{AR PL UMing TW}
+
+\title{WNFA Lab 1 Report}
+\author{Group 5: & B02902125吳哲宇 & B01902010李紹詮 & B01902048王欣維 \\
+    & B01902085邱劭同 & B01902138蔡存哲}
+\preauthor{\begin{center}\begin{tabular}{lccr}}
+\postauthor{\end{tabular}\end{center}}
+\date{}
+
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\lhead{\bfseries\thetitle}
+\chead{}
+\rhead{Group 5}
+\lfoot{}
+\cfoot{}
+\rfoot{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\footrulewidth}{0.4pt}
+
+\setlength{\droptitle}{-1cm}
+\setlength{\parindent}{2em}
+\setlength{\parskip}{.4em}
+
+\begin{document}
+\maketitle
+\thispagestyle{fancy}
+
+\section*{工作原理}
+利用綠光作定位條紋，以16條為一組，並交替顯示兩種pattern用以區分前後frame。而紅色和藍色用來傳輸資料，因此一個frame可以傳輸32bit。
+
+解碼時先看green channel，使用OpenCV中的canny edge detect找出邊界，並且判斷綠光的pattern，分別為"0101010101010111"和"0101010101110111"兩種，這時就可以用定位條紋找出紅藍光代表的sequence。
+
+由於有時綠色LED旁的藍色LED太強會干擾綠光影像，因此在分析green channel定位條紋時，會將圖片切成左右兩半，都解碼定位條紋，看哪邊能解出合法的pattern。做邊緣偵測找定位條紋時，會有很多雜訊，導致在條紋邊緣會找到大量的分界線。因此會用影像中最寬的條紋寬度的八分之一當threshold，合併過於靠近的分界線，得到真正條紋的分界線。
+
+當判斷單一條紋代表的bit時，先將整個條紋的值(0\textasciitilde255)作平均，用這個平均值的三分之二當作threshold，當條紋中央2/3的平均值大於threshold時為1，反之為0。
+
+為了減少傳輸資料時的閃爍跟色彩改變，有簡易的將資料XOR上一組亂數，雖然可減輕閃爍跟色彩變化，但還是人眼還是能區分出差異，效果沒有十分良好。
+
+每frame共有紅、藍各16bit，合計32bit；使用的相機為30fps，data rate粗估約960 bit/s。
+
+\section*{遇到的問題}
+\begin{enumerate}
+    \item 手機內建的相機無法精確的控制。
+    \item 我們使用了OpenCV的邊緣偵測，由於計算量相當大，可以預期在手機上跑會很慢，加上組內人對Android不熟，沒時間研究如何把OpenCV跑在手機上。
+    \item 光源太強時會溢到其他條紋，造成解碼困難。
+\end{enumerate}
+
+\section*{解決方法}
+\begin{enumerate}
+    \item 使用Android 5.0提供的camera2 API寫一個簡單的錄影程式，可以自己調整光圈、快門等。
+    \item 在工作站開啟一個server，將手機錄下的影像傳到工作站解碼後再傳回手機。
+    \item 使用PWM，將LED調整到適合的亮度。
+\end{enumerate}
+
+\section*{工作分配}
+\begin{itemize}[leftmargin=!,itemindent=-4em]
+    \item 吳哲宇：編寫Zigduino傳輸程式，以及實作影像解碼程式。
+    \item 李紹詮：修改Google提供的camera2 API範例App，手動設定曝光以及將錄好的影片自動上傳到工作站進行解碼。
+    % \item 王欣維：
+    \item 邱劭同：尋找影像辨識相關的研究，試圖減少辨識條紋所需的時間。
+    \item 蔡存哲：尋找影像辨識相關的研究，試圖減少辨識條紋所需的時間。
+\end{itemize}
+
+\end{document}
