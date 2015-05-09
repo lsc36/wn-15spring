@@ -1,0 +1,3 @@
+[submodule "lab3"]
+	path = lab3
+	url = git@github.com:lsc36/wn-15spring-lab3.git
