@@ -237,10 +237,12 @@ uint8_t* pkt_Rx(uint8_t len, uint8_t* frm, uint8_t lqi, uint8_t crc_fail){
     }
   }
   // send software ack
+  /*
   if(frm[0] & 0x20){
     softACK[2] = frm[2];
     ZigduinoRadio.txFrame(softACK, 5);
   }
+  */
   // now all checks are passed, copy out the received packet
   for(uint8_t i=0; i < len; i++){
     RxBuffer[i] = frm[i];
