@@ -274,9 +274,9 @@ uint8_t has_RX(){
 // calculate error detecting code
 // choose an algorithm for it
 uint16_t cal_fcs(uint8_t* frm, uint8_t len){
-  uint16_t fcs = frm[0];
-  for(uint8_t i = 1; i < len; i += 1){
-    fcs ^= frm[i];
+  uint16_t fcs = (frm[0] << 8) | frm[1];
+  for(uint8_t i = 2; i < len; i += 1){
+    fcs ^= frm[i] << (i % 2 ? 0 : 8);
   }
   return fcs;
 }
