@@ -5,6 +5,9 @@
 #define PAN_ID		0xABCD
 #define CHANNEL		26
 
+#define DIFS		128
+#define BACKOFF		128
+
 #pragma pack(push)
 #pragma pack(1)
 struct tx_header {
@@ -23,11 +26,13 @@ struct tx_ack {
 
 struct tx_data {
     uint8_t buffer[256];
-    uint32_t len;
+    size_t len;
+    int difs_ts;
+    int backoff;
 };
 struct rx_data {
     uint8_t buffer[256];
-    uint32_t len;
+    size_t len;
 };
 struct tx_data tx;
 struct rx_data rx;
@@ -69,6 +74,61 @@ out:
 
     return rx.buffer;
 }
+int rx_dispatch() {
+    struct tx_header *tx_hdr = (struct tx_header*)rx.buffer;
+
+    rx.len = 0;
+    pkt_tx_ack.seq = tx_hdr->seq;
+    ZigduinoRadio.txFrame((uint8_t*)&pkt_tx_ack,sizeof(pkt_tx_ack));
+
+    return 0;
+}
+
+int tx_check() {
+    int cca = ZigduinoRadio.doCca();
+    int ts = micros();
+    int ret = 0;
+
+    if(cca != RADIO_CCA_FREE) {
+	if((ts - tx.difs_ts) > DIFS) {
+	    tx.backoff -= (ts - tx.difs_ts - DIFS);
+	}
+	tx.difs_ts = ts;
+	goto out;
+    }
+    if((ts - tx.difs_ts) > (DIFS + tx.backoff)) {
+	tx.difs_ts = micros();
+	tx.backoff = BACKOFF;
+	ret = 1;
+    }
+
+out:
+
+    return ret;
+}
+int tx_build(uint16_t dst_addr,uint8_t *payload,size_t len) {
+    struct tx_header *tx_hdr = (struct tx_header*)tx.buffer;
+    uint16_t checksum;
+
+    tx_hdr->ctrl[0] = 0x41;
+    tx_hdr->ctrl[1] = 0x88;
+    tx_hdr->seq = 0x0;
+    tx_hdr->panid = PAN_ID;
+    tx_hdr->dst_addr = dst_addr;
+    tx_hdr->src_addr = NODE_ID;
+    tx.len = sizeof(tx_hdr);
+
+    memcpy(tx.buffer + tx.len,payload,len);
+    tx.len += len;
+
+    checksum = get_checksum(tx.buffer,tx.len);
+    memcpy(tx.buffer + tx.len,&checksum,sizeof(checksum));
+    tx.len += sizeof(checksum);
+
+    tx.len += 2;
+    return 0;
+}
+
 void setup() {
     struct tx_header *tx_hdr;
 
@@ -83,7 +143,11 @@ void setup() {
     tx_hdr->dst_addr = 0x0;
     tx_hdr->src_addr = NODE_ID;
     tx.len = 0;
+    tx.difs_ts = micros();
+    tx.backoff = BACKOFF;
+
     rx.len = 0;
+
     pkt_tx_ack.ctrl[0] = 0x42;
     pkt_tx_ack.ctrl[1] = 0x88;
 
@@ -97,10 +161,10 @@ void setup() {
 }
 void loop() {
     if(rx.len > 0) {
-	rx.len = 0;
-	struct tx_header *tx_hdr = (struct tx_header*)rx.buffer;
-	
-	pkt_tx_ack.seq = tx_hdr->seq;
-	ZigduinoRadio.txFrame((uint8_t*)&pkt_tx_ack,sizeof(pkt_tx_ack));
+	Serial.println("test");
+	rx_dispatch();
+    }else if(tx_check()) {
+	//tx_build(0x0001,(uint8_t*)"Hello",5);
+	//ZigduinoRadio.txFrame(tx.buffer,tx.len);
     }
 }
