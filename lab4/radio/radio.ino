@@ -108,6 +108,9 @@ out:
 
     return rx.buffer[qid];
 }
+
+#define ROUTE_CTRL_MAGIC 0x5566
+
 int rx_dispatch() {
     int qid = rx.qfront; rx.qfront = (rx.qfront + 1) % QLEN;
     int type = rx.buffer[qid][0];
@@ -126,6 +129,8 @@ int rx_dispatch() {
         Serial.println(rx_hdr->src_addr);
         pkt_tx_ack.seq = rx_hdr->seq;
         ZigduinoRadio.txFrame((uint8_t*)&pkt_tx_ack,sizeof(pkt_tx_ack));
+        if (*(uint16_t*)&rx.buffer[qid][sizeof(tx_header)] == ROUTE_CTRL_MAGIC)
+            route_dispatch(rx.buffer[qid]);
     }
     return 0;
 }
@@ -211,6 +216,49 @@ int tx_dispatch() {
     return 0;
 }
 
+
+/**************** start of route section ****************/
+
+
+#define ROUTE_MAX_HOPS 8
+#define ROUTE_TABLE_SIZE 16
+
+struct route_entry_t {
+    uint16_t dst_addr;
+    uint8_t len;
+    uint16_t path[ROUTE_MAX_HOPS];
+};
+route_entry_t route_table[ROUTE_TABLE_SIZE];
+int route_table_len;
+
+void route_dispatch(uint8_t *frm)
+{
+    Serial.println("route_dispatch");
+}
+
+void route_setup()
+{
+    route_table_len = 0;
+}
+
+void route_loop()
+{
+    if (Serial.available()) {
+        char buf[128];
+        size_t len = Serial.readBytes(buf, 128);
+        buf[len] = 0;
+        uint16_t dst_addr = atoi(buf);
+        Serial.print("sending frame to ");
+        Serial.println(dst_addr);
+        uint16_t magic = ROUTE_CTRL_MAGIC;
+        tx_build(dst_addr, (uint8_t*)&magic, 2);
+    }
+}
+
+
+/**************** end of route section ****************/
+
+
 void setup() {
     struct tx_header *tx_hdr;
 
@@ -255,6 +303,8 @@ void setup() {
     ZigduinoRadio.attachReceiveFrame(rx_hlr);
 
     for (int i = 0; i < NEIGHBOR_TABLE_SIZE; i++) neighbor_lastalive[i] = 0;
+
+    route_setup();
 }
 
 int okack = 0;
@@ -268,15 +318,7 @@ void loop() {
         rx_dispatch();
     }
 
-    if (tx.state == -1 && Serial.available()) {
-        char buf[128];
-        size_t len = Serial.readBytes(buf, 128);
-        buf[len] = 0;
-        uint16_t dst_addr = atoi(buf);
-        Serial.print("sending frame to ");
-        Serial.println(dst_addr);
-        tx_build(dst_addr, (uint8_t*)"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",32);
-    }
+    route_loop();
 
     ret = tx_state();
     if(ret == 1) {
