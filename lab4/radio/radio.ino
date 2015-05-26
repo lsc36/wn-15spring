@@ -1,4 +1,5 @@
 #include <ZigduinoRadio.h>
+#include "route.h"
 
 #define BROADCAST_ID	0xFFFF
 #define PAN_ID		0xABCD
@@ -109,8 +110,6 @@ out:
     return rx.buffer[qid];
 }
 
-#define ROUTE_CTRL_MAGIC 0x5566
-
 int rx_dispatch() {
     int qid = rx.qfront; rx.qfront = (rx.qfront + 1) % QLEN;
     int type = rx.buffer[qid][0];
@@ -181,6 +180,8 @@ int tx_state() {
     return 0;
 }
 int tx_build(uint16_t dst_addr,uint8_t *payload,size_t len) {
+    Serial.print("sending frame to ");
+    Serial.println(dst_addr);
     int qid = tx.qback; tx.qback = (tx.qback + 1) % QLEN;
     struct tx_header *tx_hdr = (struct tx_header*)tx.buffer[qid];
     uint16_t checksum;
@@ -220,38 +221,78 @@ int tx_dispatch() {
 /**************** start of route section ****************/
 
 
-#define ROUTE_MAX_HOPS 8
-#define ROUTE_TABLE_SIZE 16
-
-struct route_entry_t {
-    uint16_t dst_addr;
-    uint8_t len;
-    uint16_t path[ROUTE_MAX_HOPS];
-};
 route_entry_t route_table[ROUTE_TABLE_SIZE];
 int route_table_len;
+int route_state;
+uint16_t ping_dst_addr;
+
+route_entry_t *find_route_entry(uint16_t dst_addr)
+{
+    for (int i = 0; i < route_table_len; i++) {
+        if (route_table[i].dst_addr == dst_addr)
+            return &route_table[i];
+    }
+    return NULL;
+}
+
+void send_route_request(route_entry_t *r_entry)
+{
+    route_ctrl_hdr hdr;
+    hdr.magic = ROUTE_CTRL_MAGIC;
+    hdr.type = ROUTE_CTRL_REQUEST;
+    uint8_t buf[256];
+    size_t len = 0;
+    memcpy(buf, &hdr, sizeof(hdr));
+    len += sizeof(hdr);
+    memcpy(buf + len, r_entry, OFFSET(route_entry_t, path));
+    len += OFFSET(route_entry_t, path);
+    memcpy(buf + len, r_entry->path, r_entry->hops * sizeof(uint16_t));
+    len += r_entry->hops * sizeof(uint16_t);
+    tx_build(BROADCAST_ID, buf, len);
+}
+
+void send_ping()
+{
+}
 
 void route_dispatch(uint8_t *frm)
 {
-    Serial.println("route_dispatch");
+    route_ctrl_hdr *hdr = (route_ctrl_hdr*)&frm[sizeof(tx_header)];
+    route_entry_t *r_entry = (route_entry_t*)&frm[sizeof(tx_header) + sizeof(route_ctrl_hdr)];
+    switch (hdr->type) {
+    case ROUTE_CTRL_REQUEST:
+        break;
+    case ROUTE_CTRL_REPLY:
+        break;
+    case ROUTE_CTRL_PING:
+        break;
+    }
 }
 
 void route_setup()
 {
     route_table_len = 0;
+    route_state = ROUTE_STATE_IDLE;
 }
 
 void route_loop()
 {
-    if (Serial.available()) {
+    if (route_state == ROUTE_STATE_IDLE && Serial.available()) {
         char buf[128];
         size_t len = Serial.readBytes(buf, 128);
         buf[len] = 0;
-        uint16_t dst_addr = atoi(buf);
-        Serial.print("sending frame to ");
-        Serial.println(dst_addr);
-        uint16_t magic = ROUTE_CTRL_MAGIC;
-        tx_build(dst_addr, (uint8_t*)&magic, 2);
+        ping_dst_addr = atoi(buf);
+
+        route_entry_t *r_entry = find_route_entry(ping_dst_addr);
+        if (r_entry == NULL) {
+            route_entry_t req_entry;
+            req_entry.dst_addr = ping_dst_addr;
+            req_entry.hops = 1;
+            req_entry.path[0] = node_id;
+            send_route_request(&req_entry);
+        } else {
+            send_ping();
+        }
     }
 }
 
