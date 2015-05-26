@@ -28,6 +28,7 @@ struct tx_ack {
 #pragma pack(pop)
 
 #define QLEN 32
+#define MAX_RETRY 5
 struct tx_data {
     uint8_t buffer[QLEN][64];
     size_t len[QLEN];
@@ -37,6 +38,7 @@ struct tx_data {
     int backoff;
     uint8_t seq;
     int state;
+    int retry;
 };
 struct rx_data {
     uint8_t buffer[QLEN][64];
@@ -161,6 +163,10 @@ int tx_state() {
             tx.state = 4;
         }
         if((ts - tx.timeout_ts) > TIMEOUT) {
+            if (tx.retry == MAX_RETRY) {
+                tx.retry = 0;
+                tx.qfront = (tx.qfront + 1) % QLEN;
+            } else tx.retry++;
             tx.state = -1;
             return 3;
         }
@@ -218,6 +224,7 @@ void setup() {
     tx.backoff = BACKOFF + random(1,backoff_window) * 512;
     tx.seq = 0;
     tx.state = -1;
+    tx.retry = 0;
 
     for (int i = 0; i < QLEN; i++) {
         tx_hdr = (struct tx_header*)tx.buffer[i];
