@@ -123,6 +123,7 @@ int tx_state() {
     int rssi;
     int ts = micros();
 
+    if(tx.state == -1) return 0;
     if(tx.state <= 1) {
         rssi = ZigduinoRadio.getRssiNow();
         if(tx.state == 0) {
@@ -142,7 +143,7 @@ int tx_state() {
         }
     } else if(tx.state >= 3) {
         if(tx.state == 5) {
-            tx.state = 0;
+            tx.state = -1;
             return 2;
         }
         if(tx.state == 3) {
@@ -151,7 +152,7 @@ int tx_state() {
             tx.state = 4;
         }
         if((ts - tx.timeout_ts) > TIMEOUT) {
-            tx.state = 0;
+            tx.state = -1;
             return 3;
         }
     }
@@ -184,10 +185,7 @@ int tx_build(uint16_t dst_addr,uint8_t *payload,size_t len) {
     return 0;
 }
 int tx_dispatch() {
-
     tx.state = 3;
-
-    tx_build((node_id % 2) + 1,(uint8_t*)"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",64);
     ZigduinoRadio.txFrame(tx.buffer,tx.len);
     return 0;
 }
@@ -205,7 +203,7 @@ void setup() {
     tx.timeout_ts = micros();
     tx.backoff = BACKOFF + random(1,backoff_window) * 512;
     tx.seq = 0;
-    tx.state = 0;
+    tx.state = -1;
 
     tx_hdr = (struct tx_header*)tx.buffer;
     tx_hdr->ctrl[0] = 0x41;
@@ -244,6 +242,17 @@ void loop() {
 
     if(rx.len > 0) {
         rx_dispatch();
+    }
+
+    if (tx.state == -1 && Serial.available()) {
+        char buf[128];
+        size_t len = Serial.readBytes(buf, 128);
+        buf[len] = 0;
+        uint16_t dst_addr = atoi(buf);
+        Serial.print("sending frame to ");
+        Serial.println(dst_addr);
+        tx_build(dst_addr, (uint8_t*)"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",64);
+        tx.state = 0;
     }
 
     ret = tx_state();
