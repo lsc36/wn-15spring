@@ -27,9 +27,9 @@ struct tx_ack {
 };
 #pragma pack(pop)
 
-#define QLEN 8
+#define QLEN 32
 struct tx_data {
-    uint8_t buffer[QLEN][256];
+    uint8_t buffer[QLEN][64];
     size_t len[QLEN];
     int qfront, qback;
     int difs_ts;
@@ -39,7 +39,7 @@ struct tx_data {
     int state;
 };
 struct rx_data {
-    uint8_t buffer[QLEN][256];
+    uint8_t buffer[QLEN][64];
     size_t len[QLEN];
     int qfront, qback;
 };
@@ -266,7 +266,7 @@ void loop() {
         uint16_t dst_addr = atoi(buf);
         Serial.print("sending frame to ");
         Serial.println(dst_addr);
-        tx_build(dst_addr, (uint8_t*)"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",64);
+        tx_build(dst_addr, (uint8_t*)"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",32);
     }
 
     ret = tx_state();
