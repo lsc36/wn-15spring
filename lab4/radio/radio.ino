@@ -50,45 +50,45 @@ uint16_t get_checksum(uint8_t *data,int len) {
     int i;
     uint8_t checksum = 0;
     for(i = 0; i < len; i++) {
-	checksum ^= data[i];
+        checksum ^= data[i];
     }
     return checksum;
 }
 
 uint8_t* rx_hlr(uint8_t len,uint8_t *frm,uint8_t lqi,uint8_t crc_fail) {
     if(frm[0] == 0x42) {
-	if(len < sizeof(struct tx_ack)) {
-	    goto out;
-	}
+        if(len < sizeof(struct tx_ack)) {
+            goto out;
+        }
     } else if(frm[0] == 0x41) {
-	struct tx_header *rx_hdr = (struct tx_header*)frm;
+        struct tx_header *rx_hdr = (struct tx_header*)frm;
 
-	if(len < sizeof(struct tx_header)) {
-	    goto out;
-	}
+        if(len < sizeof(struct tx_header)) {
+            goto out;
+        }
 
-	//Remove unused HWACK
-	len -= 2;
+        //Remove unused HWACK
+        len -= 2;
 
-	if(rx_hdr->ctrl[0] == 0x42) {
-	    goto out;
-	}
+        if(rx_hdr->ctrl[0] == 0x42) {
+            goto out;
+        }
 
-	if(rx_hdr->panid != PAN_ID) {
-	    goto out;
-	}
+        if(rx_hdr->panid != PAN_ID) {
+            goto out;
+        }
         // record neighbor
         if (neighbor_lastalive[rx_hdr->src_addr & 63] == 0) {
             Serial.print("new neighbor ");
             Serial.println(rx_hdr->src_addr);
         }
-    neighbor_lastalive[rx_hdr->src_addr & 63] = micros();
-	if(rx_hdr->dst_addr != node_id && rx_hdr->dst_addr != BROADCAST_ID) {
-	    goto out;
-	}
-	if(get_checksum(frm,len) != 0x0) {
-	    goto out;
-	}
+        neighbor_lastalive[rx_hdr->src_addr & 63] = micros();
+        if(rx_hdr->dst_addr != node_id && rx_hdr->dst_addr != BROADCAST_ID) {
+            goto out;
+        }
+        if(get_checksum(frm,len) != 0x0) {
+            goto out;
+        }
     }
 
     memcpy(rx.buffer,frm,len);
@@ -104,15 +104,15 @@ int rx_dispatch() {
     rx.len = 0;
 
     if(type == 0x42) {
-	struct tx_ack *rx_ack = (struct tx_ack*)rx.buffer;
-	if(rx_ack->seq == tx.seq) {
-	    tx.state = 5;
-	}
+        struct tx_ack *rx_ack = (struct tx_ack*)rx.buffer;
+        if(rx_ack->seq == tx.seq) {
+            tx.state = 5;
+        }
     } else if(type == 0x41) {
-	struct tx_header *rx_hdr = (struct tx_header*)rx.buffer;
+        struct tx_header *rx_hdr = (struct tx_header*)rx.buffer;
 
-	pkt_tx_ack.seq = rx_hdr->seq;
-	ZigduinoRadio.txFrame((uint8_t*)&pkt_tx_ack,sizeof(pkt_tx_ack));
+        pkt_tx_ack.seq = rx_hdr->seq;
+        ZigduinoRadio.txFrame((uint8_t*)&pkt_tx_ack,sizeof(pkt_tx_ack));
     }
     return 0;
 }
@@ -122,36 +122,36 @@ int tx_state() {
     int ts = micros();
 
     if(tx.state <= 1) {
-	rssi = ZigduinoRadio.getRssiNow();
-	if(tx.state == 0) {
-	    //start DIFS
-	    tx.difs_ts = ts;
-	    tx.state = 1;
-	}
-	if(rssi > -91) {
-	    if((ts - tx.difs_ts) > DIFS) {
-		tx.backoff -= (ts - tx.difs_ts - DIFS);
-	    }
-	    tx.difs_ts = ts;
-	} else if((ts - tx.difs_ts) > (DIFS + tx.backoff)) {
-	    tx.backoff = BACKOFF + random(1,backoff_window) * 512;
-	    tx.state = 2;
-	    return 1;
-	}
+        rssi = ZigduinoRadio.getRssiNow();
+        if(tx.state == 0) {
+            //start DIFS
+            tx.difs_ts = ts;
+            tx.state = 1;
+        }
+        if(rssi > -91) {
+            if((ts - tx.difs_ts) > DIFS) {
+                tx.backoff -= (ts - tx.difs_ts - DIFS);
+            }
+            tx.difs_ts = ts;
+        } else if((ts - tx.difs_ts) > (DIFS + tx.backoff)) {
+            tx.backoff = BACKOFF + random(1,backoff_window) * 512;
+            tx.state = 2;
+            return 1;
+        }
     } else if(tx.state >= 3) {
-	if(tx.state == 5) {
-	    tx.state = 0;
-	    return 2;
-	}
-	if(tx.state == 3) {
-	    //start TIMEOUT
-	    tx.timeout_ts = ts;
-	    tx.state = 4;
-	}
-	if((ts - tx.timeout_ts) > TIMEOUT) {
-	    tx.state = 0;
-	    return 3;
-	}
+        if(tx.state == 5) {
+            tx.state = 0;
+            return 2;
+        }
+        if(tx.state == 3) {
+            //start TIMEOUT
+            tx.timeout_ts = ts;
+            tx.state = 4;
+        }
+        if((ts - tx.timeout_ts) > TIMEOUT) {
+            tx.state = 0;
+            return 3;
+        }
     }
 
     return 0;
@@ -194,7 +194,7 @@ void setup() {
     struct tx_header *tx_hdr;
 
     randomSeed(analogRead(0));
-    pinMode(13,OUTPUT);   
+    pinMode(13,OUTPUT);
     digitalWrite(13,HIGH);
 
     node_id = random(1, 0xFFFF);
@@ -241,26 +241,26 @@ void loop() {
     int ret;
 
     if(rx.len > 0) {
-	rx_dispatch();
+        rx_dispatch();
     }
 
     ret = tx_state();
     if(ret == 1) {
-	tx_dispatch();
+        tx_dispatch();
     } else if(ret == 2) {
-	backoff_window = 1;
-	okack += 1;
-	//Serial.println("OKACK");
+        backoff_window = 1;
+        okack += 1;
+        //Serial.println("OKACK");
     } else if(ret == 3) {
-	backoff_window = min(backoff_window * 2,8192);
-	noack += 1;
-	//Serial.println("NOACK");
+        backoff_window = min(backoff_window * 2,8192);
+        noack += 1;
+        //Serial.println("NOACK");
     }
 
     if(counter == 0) {
-	Serial.print(okack);
-	Serial.print(" ");
-	Serial.println(noack);
+        Serial.print(okack);
+        Serial.print(" ");
+        Serial.println(noack);
     }
     counter += 1;
 }
