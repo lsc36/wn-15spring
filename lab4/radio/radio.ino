@@ -1,13 +1,13 @@
 #include <ZigduinoRadio.h>
 
 #define BROADCAST_ID	0xFFFF
-#define NODE_ID		0x0002
+#define NODE_ID		0x0001
 #define PAN_ID		0xABCD
 #define CHANNEL		26
 
-#define DIFS		1024
-#define TIMEOUT		512
-#define BACKOFF		1024
+#define DIFS		4096
+#define TIMEOUT		8192
+#define BACKOFF		4096
 uint32_t backoff_window	=   16;
 
 #pragma pack(push)
@@ -68,8 +68,6 @@ uint8_t* rx_hlr(uint8_t len,uint8_t *frm,uint8_t lqi,uint8_t crc_fail) {
 	len -= 2;
 
 	if(rx_hdr->ctrl[0] == 0x42) {
-	    Serial.println(tx.seq);
-
 	    goto out;
 	}
 
@@ -106,8 +104,6 @@ int rx_dispatch() {
 
 	pkt_tx_ack.seq = rx_hdr->seq;
 	ZigduinoRadio.txFrame((uint8_t*)&pkt_tx_ack,sizeof(pkt_tx_ack));
-
-	Serial.println(rx_hdr->src_addr);
     }
     return 0;
 }
@@ -220,6 +216,11 @@ void setup() {
 
     ZigduinoRadio.attachReceiveFrame(rx_hlr);
 }
+
+int okack = 0;
+int noack = 0;
+uint16_t counter = 0;
+
 void loop() {
     int ret;
 
@@ -232,9 +233,18 @@ void loop() {
 	tx_dispatch();
     } else if(ret == 2) {
 	backoff_window = 1;
-	Serial.println("OKACK");
+	okack += 1;
+	//Serial.println("OKACK");
     } else if(ret == 3) {
 	backoff_window = min(backoff_window * 2,8192);
-	Serial.println("NOACK");
+	noack += 1;
+	//Serial.println("NOACK");
     }
+
+    if(counter == 0) {
+	Serial.print(okack);
+	Serial.print(" ");
+	Serial.println(noack);
+    }
+    counter += 1;
 }
