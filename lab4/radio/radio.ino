@@ -119,7 +119,8 @@ int rx_dispatch() {
         }
     } else if(type == 0x41) {
         struct tx_header *rx_hdr = (struct tx_header*)rx.buffer[qid];
-
+        Serial.print("received frame from ");
+        Serial.println(rx_hdr->src_addr);
         pkt_tx_ack.seq = rx_hdr->seq;
         ZigduinoRadio.txFrame((uint8_t*)&pkt_tx_ack,sizeof(pkt_tx_ack));
     }
@@ -150,8 +151,8 @@ int tx_state() {
         }
     } else if(tx.state >= 3) {
         if(tx.state == 5) {
-            if (tx.qfront != tx.qback) tx.state = 0;
-            else tx.state = -1;
+            tx.qfront = (tx.qfront + 1) % QLEN;
+            tx.state = -1;
             return 2;
         }
         if(tx.state == 3) {
@@ -160,8 +161,7 @@ int tx_state() {
             tx.state = 4;
         }
         if((ts - tx.timeout_ts) > TIMEOUT) {
-            if (tx.qfront != tx.qback) tx.state = 0;
-            else tx.state = -1;
+            tx.state = -1;
             return 3;
         }
     }
@@ -177,7 +177,6 @@ int tx_build(uint16_t dst_addr,uint8_t *payload,size_t len) {
 
     tx_hdr->ctrl[0] = 0x41;
     tx_hdr->ctrl[1] = 0x88;
-    tx_hdr->seq = tx.seq;
     tx_hdr->panid = PAN_ID;
     tx_hdr->dst_addr = dst_addr;
     tx_hdr->src_addr = node_id;
@@ -195,7 +194,10 @@ int tx_build(uint16_t dst_addr,uint8_t *payload,size_t len) {
     return 0;
 }
 int tx_dispatch() {
-    int qid = tx.qfront; tx.qfront = (tx.qfront + 1) % QLEN;
+    int qid = tx.qfront;
+    struct tx_header *tx_hdr = (struct tx_header*)tx.buffer[qid];
+    tx_hdr->seq = tx.seq;
+    Serial.print("!");
     tx.state = 3;
     ZigduinoRadio.txFrame(tx.buffer[qid],tx.len[qid]);
     return 0;
