@@ -1,9 +1,10 @@
 #include <ZigduinoRadio.h>
 
 #define BROADCAST_ID	0xFFFF
-#define NODE_ID		0x0001
 #define PAN_ID		0xABCD
 #define CHANNEL		26
+
+uint16_t node_id;
 
 #define DIFS		4096
 #define TIMEOUT		8192
@@ -43,6 +44,8 @@ struct tx_data tx;
 struct rx_data rx;
 struct tx_ack pkt_tx_ack;
 
+uint32_t neighbor_lastalive[64];
+
 uint16_t get_checksum(uint8_t *data,int len) {
     int i;
     uint8_t checksum = 0;
@@ -74,7 +77,13 @@ uint8_t* rx_hlr(uint8_t len,uint8_t *frm,uint8_t lqi,uint8_t crc_fail) {
 	if(rx_hdr->panid != PAN_ID) {
 	    goto out;
 	}
-	if(rx_hdr->dst_addr != NODE_ID && rx_hdr->dst_addr != BROADCAST_ID) {
+        // record neighbor
+        if (neighbor_lastalive[rx_hdr->src_addr & 63] == 0) {
+            Serial.print("new neighbor ");
+            Serial.println(rx_hdr->src_addr);
+        }
+    neighbor_lastalive[rx_hdr->src_addr & 63] = micros();
+	if(rx_hdr->dst_addr != node_id && rx_hdr->dst_addr != BROADCAST_ID) {
 	    goto out;
 	}
 	if(get_checksum(frm,len) != 0x0) {
@@ -158,7 +167,7 @@ int tx_build(uint16_t dst_addr,uint8_t *payload,size_t len) {
     tx_hdr->seq = tx.seq;
     tx_hdr->panid = PAN_ID;
     tx_hdr->dst_addr = dst_addr;
-    tx_hdr->src_addr = NODE_ID;
+    tx_hdr->src_addr = node_id;
     tx.len = sizeof(*tx_hdr);
 
     memcpy(tx.buffer + tx.len,payload,len);
@@ -176,7 +185,7 @@ int tx_dispatch() {
 
     tx.state = 3;
 
-    tx_build((NODE_ID % 2) + 1,(uint8_t*)"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",64);
+    tx_build((node_id % 2) + 1,(uint8_t*)"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",64);
     ZigduinoRadio.txFrame(tx.buffer,tx.len);
     return 0;
 }
@@ -187,6 +196,8 @@ void setup() {
     randomSeed(analogRead(0));
     pinMode(13,OUTPUT);   
     digitalWrite(13,HIGH);
+
+    node_id = random(1, 0xFFFF);
 
     tx.difs_ts = micros();
     tx.timeout_ts = micros();
@@ -200,7 +211,7 @@ void setup() {
     tx_hdr->seq = 0x0;
     tx_hdr->panid = PAN_ID;
     tx_hdr->dst_addr = 0x0;
-    tx_hdr->src_addr = NODE_ID;
+    tx_hdr->src_addr = node_id;
 
     tx.len = 0;
     rx.len = 0;
@@ -210,11 +221,16 @@ void setup() {
 
     ZigduinoRadio.begin(CHANNEL,(uint8_t*)tx_hdr);
     ZigduinoRadio.setParam(phyPanId,(uint16_t)PAN_ID);
-    ZigduinoRadio.setParam(phyShortAddr,(uint16_t)NODE_ID);
+    ZigduinoRadio.setParam(phyShortAddr,(uint16_t)node_id);
     ZigduinoRadio.setParam(phyCCAMode,(uint8_t)0x3);
     Serial.begin(9600);
 
+    Serial.print("node_id = ");
+    Serial.println(node_id);
+
     ZigduinoRadio.attachReceiveFrame(rx_hlr);
+
+    for (int i = 0; i < 64; i++) neighbor_lastalive[i] = 0;
 }
 
 int okack = 0;
