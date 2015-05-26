@@ -44,7 +44,9 @@ struct tx_data tx;
 struct rx_data rx;
 struct tx_ack pkt_tx_ack;
 
-uint32_t neighbor_lastalive[64];
+#define NEIGHBOR_TABLE_SIZE 64
+#define NEIGHBOR_TABLE_MASK (NEIGHBOR_TABLE_SIZE - 1)
+uint32_t neighbor_lastalive[NEIGHBOR_TABLE_SIZE];
 
 uint16_t get_checksum(uint8_t *data,int len) {
     int i;
@@ -78,11 +80,11 @@ uint8_t* rx_hlr(uint8_t len,uint8_t *frm,uint8_t lqi,uint8_t crc_fail) {
             goto out;
         }
         // record neighbor
-        if (neighbor_lastalive[rx_hdr->src_addr & 63] == 0) {
+        if (neighbor_lastalive[rx_hdr->src_addr & NEIGHBOR_TABLE_MASK] == 0) {
             Serial.print("new neighbor ");
             Serial.println(rx_hdr->src_addr);
         }
-        neighbor_lastalive[rx_hdr->src_addr & 63] = micros();
+        neighbor_lastalive[rx_hdr->src_addr & NEIGHBOR_TABLE_MASK] = micros();
         if(rx_hdr->dst_addr != node_id && rx_hdr->dst_addr != BROADCAST_ID) {
             goto out;
         }
@@ -230,7 +232,7 @@ void setup() {
 
     ZigduinoRadio.attachReceiveFrame(rx_hlr);
 
-    for (int i = 0; i < 64; i++) neighbor_lastalive[i] = 0;
+    for (int i = 0; i < NEIGHBOR_TABLE_SIZE; i++) neighbor_lastalive[i] = 0;
 }
 
 int okack = 0;
