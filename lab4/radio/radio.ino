@@ -3,7 +3,7 @@
 
 #define BROADCAST_ID	0xFFFF
 #define PAN_ID		0xABCD
-#define CHANNEL		26
+#define CHANNEL		24
 
 uint16_t node_id;
 
@@ -54,8 +54,6 @@ struct tx_ack pkt_tx_ack;
 #define NEIGHBOR_TABLE_SIZE 64
 #define NEIGHBOR_TABLE_MASK (NEIGHBOR_TABLE_SIZE - 1)
 uint32_t neighbor_lastalive[NEIGHBOR_TABLE_SIZE];
-
-char buf[64];
 
 uint16_t get_checksum(uint8_t *data,int len) {
     int i;
@@ -223,25 +221,15 @@ int tx_dispatch() {
 /**************** start of route section ****************/
 
 
-route_entry_t route_table[ROUTE_TABLE_SIZE];
-int route_table_len;
 int route_state;
-uint16_t ping_dst_addr;
+char buf[64];
 
-route_entry_t *find_route_entry(uint16_t dst_addr)
-{
-    for (int i = 0; i < route_table_len; i++) {
-        if (route_table[i].dst_addr == dst_addr)
-            return &route_table[i];
-    }
-    return NULL;
-}
-
-void send_route_request(route_entry_t *r_entry)
+void send_ping(route_entry_t *r_entry, uint16_t ping_id)
 {
     route_ctrl_hdr hdr;
     hdr.magic = ROUTE_CTRL_MAGIC;
-    hdr.type = ROUTE_CTRL_REQUEST;
+    hdr.type = ROUTE_CTRL_PING;
+    hdr.id = ping_id;
     size_t len = 0;
     memcpy(buf, &hdr, sizeof(hdr));
     len += sizeof(hdr);
@@ -252,11 +240,12 @@ void send_route_request(route_entry_t *r_entry)
     tx_build(BROADCAST_ID, (uint8_t*)buf, len);
 }
 
-void send_route_reply(route_entry_t *r_entry)
+void send_ping_reply(route_entry_t *r_entry, uint16_t dst_addr)
 {
     route_ctrl_hdr hdr;
     hdr.magic = ROUTE_CTRL_MAGIC;
-    hdr.type = ROUTE_CTRL_REPLY;
+    hdr.type = ROUTE_CTRL_PING_REPLY;
+    hdr.id = random(1, 65535);
     size_t len = 0;
     memcpy(buf, &hdr, sizeof(hdr));
     len += sizeof(hdr);
@@ -264,20 +253,19 @@ void send_route_reply(route_entry_t *r_entry)
     len += OFFSET(route_entry_t, path);
     memcpy(buf + len, r_entry->path, r_entry->hops * sizeof(uint16_t));
     len += r_entry->hops * sizeof(uint16_t);
-    tx_build(BROADCAST_ID, (uint8_t*)buf, len);
+    tx_build(dst_addr, (uint8_t*)buf, len);
 }
 
-void send_ping()
-{
-}
+uint16_t visited_list[VISITED_SIZE];
+int visited_pos;
 
 void route_dispatch(uint8_t *frm)
 {
     route_ctrl_hdr *hdr = (route_ctrl_hdr*)&frm[sizeof(tx_header)];
     route_entry_t *r_entry = (route_entry_t*)&frm[sizeof(tx_header) + sizeof(route_ctrl_hdr)];
     switch (hdr->type) {
-    case ROUTE_CTRL_REQUEST:
-        Serial.print("received route request: hops = ");
+    case ROUTE_CTRL_PING:
+        Serial.print("received ping: hops = ");
         Serial.print(r_entry->hops);
         Serial.print(" ");
         Serial.print(r_entry->path[0]);
@@ -288,59 +276,41 @@ void route_dispatch(uint8_t *frm)
         if (r_entry->dst_addr == node_id) {
             Serial.print(" -> ");
             Serial.println(r_entry->dst_addr);
-            Serial.println("sending route reply");
+            Serial.println("sending ping reply");
             // TODO
         } else {
             Serial.print(" -> ... -> ");
             Serial.println(r_entry->dst_addr);
 
             bool visited = false;
-            for (int i = 0; i < r_entry->hops; i++) {
-                if (r_entry->path[i] == node_id) { visited = true; break; }
+            for (int i = 0; i < VISITED_SIZE; i++) {
+                if (visited_list[i] == hdr->id) { visited = true; break; }
             }
             if (visited) break;
-
-            for (int i = 0; i < r_entry->hops; i++) {
-                route_entry_t *entry = find_route_entry(r_entry->path[i]);
-                if (entry == NULL) {
-                    entry = &route_table[route_table_len++];
-                    entry->dst_addr = r_entry->path[i];
-                    Serial.print("new route entry to ");
-                    Serial.println(r_entry->path[i]);
-                }
-                entry->hops = r_entry->hops - i - 1;
-                for (int j = 0; j < entry->hops; j++)
-                    entry->path[j] = r_entry->path[r_entry->hops - j - 1];
-                Serial.print("update route entry to ");
-                Serial.println(entry->dst_addr);
-                for (int j = 0; j < entry->hops; j++) {
-                    Serial.print(" -> ");
-                    Serial.print(entry->path[j]);
-                }
-                Serial.println();
-            }
+            visited_list[visited_pos] = hdr->id;
+            visited_pos = (visited_pos + 1) % VISITED_SIZE;
 
             if (r_entry->hops >= ROUTE_MAX_HOPS) break;
+            Serial.println("rebroadcasting ping");
             route_entry_t new_entry;
             new_entry.dst_addr = r_entry->dst_addr;
             new_entry.hops = r_entry->hops + 1;
             for (int i = 0; i < r_entry->hops; i++)
                 new_entry.path[i] = r_entry->path[i];
             new_entry.path[r_entry->hops] = node_id;
-            send_route_request(&new_entry);
+            send_ping(&new_entry, hdr->id);
         }
         break;
-    case ROUTE_CTRL_REPLY:
-        break;
-    case ROUTE_CTRL_PING:
+    case ROUTE_CTRL_PING_REPLY:
         break;
     }
 }
 
 void route_setup()
 {
-    route_table_len = 0;
     route_state = ROUTE_STATE_IDLE;
+    for (int i = 0; i < VISITED_SIZE; i++) visited_list[i] = 0;
+    visited_pos = 0;
 }
 
 void route_loop()
@@ -348,18 +318,15 @@ void route_loop()
     if (route_state == ROUTE_STATE_IDLE && Serial.available()) {
         size_t len = Serial.readBytes(buf, 128);
         buf[len] = 0;
-        ping_dst_addr = atoi(buf);
-
-        route_entry_t *r_entry = find_route_entry(ping_dst_addr);
-        if (r_entry == NULL) {
-            route_entry_t req_entry;
-            req_entry.dst_addr = ping_dst_addr;
-            req_entry.hops = 1;
-            req_entry.path[0] = node_id;
-            send_route_request(&req_entry);
-        } else {
-            send_ping();
-        }
+        uint16_t ping_dst_addr = atoi(buf);
+        route_entry_t new_entry;
+        new_entry.dst_addr = ping_dst_addr;
+        new_entry.hops = 1;
+        new_entry.path[0] = node_id;
+        uint16_t ping_id = random(1, 65535);
+        send_ping(&new_entry, ping_id);
+        visited_list[visited_pos] = ping_id;
+        visited_pos = (visited_pos + 1) % VISITED_SIZE;
     }
 }
 
