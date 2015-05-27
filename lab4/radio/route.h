@@ -24,3 +24,14 @@ struct route_ctrl_hdr {
     uint8_t type;
     uint16_t id;
 };
+
+#define PING_TYPE_REQUEST 0x1
+#define PING_TYPE_REPLY 0x2
+
+#define PING_BUF_SIZE 16
+
+struct ping_hdr_t {
+    uint8_t type;
+    uint16_t src_addr;
+    uint16_t target_addr;
+};

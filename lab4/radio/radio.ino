@@ -1,5 +1,6 @@
 #include <ZigduinoRadio.h>
 #include "disco.h"
+#include "route.h"
 
 #define BROADCAST_ID	0xFFFF
 #define PAN_ID		0xABCD
@@ -124,6 +125,9 @@ int rx_dispatch() {
 
         if (*(uint16_t*)&rx.buffer[qid][sizeof(tx_header)] == DISCO_CTRL_MAGIC) {
             disco_rx_dispatch(&rx.buffer[qid][sizeof(tx_header)]);
+        }
+        if (*(uint16_t*)&rx.buffer[qid][sizeof(tx_header)] == ROUTE_CTRL_MAGIC) {
+            ping_rx_dispatch(&rx.buffer[qid][sizeof(tx_header)]);
         }
     }
     return 0;
@@ -360,7 +364,7 @@ int disco_rx_dispatch(uint8_t *payload) {
     }
 
     return 0;
-}   
+}
 int disco_query(uint16_t target_addr,uint16_t version) {
     struct disco_query query;
 
@@ -550,6 +554,45 @@ int disco_route_get(uint16_t target_addr,void (*callback)(uint16_t,void*),void *
     return -1;
 }
 
+uint32_t last_ping_time;
+
+void ping_callback(uint16_t dst_addr, void *param)
+{
+    tx_build(dst_addr, (uint8_t*)param, sizeof(ping_hdr_t));
+}
+
+ping_hdr_t pingbuf[PING_BUF_SIZE];
+int pingbuf_pos;
+
+int ping_send(uint8_t type, uint16_t src_addr, uint16_t target_addr)
+{
+    ping_hdr_t *nhdr = &pingbuf[pingbuf_pos];
+    pingbuf_pos = (pingbuf_pos + 1) % PING_BUF_SIZE;
+    nhdr->type = type;
+    nhdr->src_addr = src_addr;
+    nhdr->target_addr = target_addr;
+    disco_route_get(nhdr->target_addr, ping_callback, nhdr);
+}
+
+int ping_rx_dispatch(uint8_t *payload)
+{
+    ping_hdr_t *hdr = (ping_hdr_t*)payload;
+    if (hdr->target_addr == node_id) {
+        if (hdr->type == PING_TYPE_REQUEST) {
+            ping_send(PING_TYPE_REPLY, node_id, hdr->src_addr);
+        } else if (hdr->type == PING_TYPE_REPLY) {
+            uint32_t rtt = micros() - last_ping_time;
+            Serial.print("received ping reply from ");
+            Serial.print(hdr->src_addr);
+            Serial.print(", rtt = ");
+            Serial.print(rtt / 1000.0);
+            Serial.println("ms");
+        }
+    } else {
+        ping_send(hdr->type, hdr->src_addr, hdr->target_addr);
+    }
+}
+
 void setup() {
     struct tx_header *tx_hdr;
 
@@ -557,7 +600,7 @@ void setup() {
     pinMode(13,OUTPUT);
     digitalWrite(13,HIGH);
 
-    node_id = random(1, 0xFFFF);
+    node_id = 1;
 
     tx.qfront = tx.qback = 0;
     tx.difs_ts = micros();
@@ -593,6 +636,8 @@ void setup() {
 
     disco_init();
 
+    pingbuf_pos = 0;
+
     ZigduinoRadio.attachReceiveFrame(rx_hlr);
 }
 
@@ -619,7 +664,8 @@ void loop() {
     if(Serial.available()) {
         size_t len = Serial.readBytes(buf,32);
         uint16_t ping_dst_addr = atoi(buf);
-        disco_route_get(ping_dst_addr,test_callback,(void*)ping_dst_addr);
+        ping_send(PING_TYPE_REQUEST, node_id, ping_dst_addr);
+        last_ping_time = micros();
     }
 
     if(counter == 0) {
