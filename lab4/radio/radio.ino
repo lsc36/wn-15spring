@@ -283,12 +283,30 @@ void route_dispatch(uint8_t *frm)
             }
             if (visited) break;
 
+            for (int i = 0; i < r_entry->hops; i++) {
+                route_entry_t *entry = find_route_entry(r_entry->path[i]);
+                if (entry == NULL) {
+                    entry = &route_table[route_table_len++];
+                    entry->dst_addr = r_entry->path[i];
+                    Serial.print("new route entry to ");
+                    Serial.println(r_entry->path[i]);
+                }
+                entry->hops = r_entry->hops - i - 1;
+                for (int j = 0; j < entry->hops; j++)
+                    entry->path[j] = r_entry->path[r_entry->hops - j - 1];
+                Serial.print("update route entry to ");
+                Serial.println(entry->dst_addr);
+                for (int j = 0; j < entry->hops; j++) {
+                    Serial.print(" -> ");
+                    Serial.print(entry->path[j]);
+                }
+                Serial.println();
+            }
+
             if (r_entry->hops >= ROUTE_MAX_HOPS) break;
             route_entry_t new_entry;
             new_entry.dst_addr = r_entry->dst_addr;
             new_entry.hops = r_entry->hops + 1;
-            Serial.print("new entry: hops = ");
-            Serial.println(new_entry.hops);
             for (int i = 0; i < r_entry->hops; i++)
                 new_entry.path[i] = r_entry->path[i];
             new_entry.path[r_entry->hops] = node_id;
