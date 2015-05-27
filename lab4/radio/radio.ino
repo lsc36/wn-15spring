@@ -258,6 +258,7 @@ void send_ping_reply(route_entry_t *r_entry, uint16_t dst_addr)
 
 uint16_t visited_list[VISITED_SIZE];
 int visited_pos;
+uint32_t last_ping_time;
 
 void route_dispatch(uint8_t *frm)
 {
@@ -276,8 +277,16 @@ void route_dispatch(uint8_t *frm)
         if (r_entry->dst_addr == node_id) {
             Serial.print(" -> ");
             Serial.println(r_entry->dst_addr);
-            Serial.println("sending ping reply");
-            // TODO
+            if (r_entry->hops >= ROUTE_MAX_HOPS) break;
+            Serial.print("sending ping reply to ");
+            Serial.println(r_entry->path[r_entry->hops - 1]);
+            route_entry_t new_entry;
+            new_entry.dst_addr = r_entry->path[0];
+            new_entry.hops = r_entry->hops + 1;
+            for (int i = 0; i < r_entry->hops; i++)
+                new_entry.path[i] = r_entry->path[i];
+            new_entry.path[r_entry->hops] = node_id;
+            send_ping_reply(&new_entry, r_entry->path[r_entry->hops - 1]);
         } else {
             Serial.print(" -> ... -> ");
             Serial.println(r_entry->dst_addr);
@@ -302,6 +311,24 @@ void route_dispatch(uint8_t *frm)
         }
         break;
     case ROUTE_CTRL_PING_REPLY:
+        Serial.println("received ping reply");
+        if (r_entry->dst_addr == node_id) {
+            uint32_t rtt = micros() - last_ping_time;
+            Serial.print("rtt = ");
+            Serial.print(rtt / 1000.0);
+            Serial.println("ms");
+            Serial.print("hops = ");
+            Serial.print(r_entry->hops);
+            Serial.print(" ");
+            Serial.print(r_entry->path[0]);
+            for (int i = 1; i < r_entry->hops; i++) {
+                Serial.print(" -> ");
+                Serial.print(r_entry->path[i]);
+            }
+            Serial.println();
+        } else {
+            // TODO
+        }
         break;
     }
 }
@@ -325,6 +352,7 @@ void route_loop()
         new_entry.path[0] = node_id;
         uint16_t ping_id = random(1, 65535);
         send_ping(&new_entry, ping_id);
+        last_ping_time = micros();
         visited_list[visited_pos] = ping_id;
         visited_pos = (visited_pos + 1) % VISITED_SIZE;
     }
