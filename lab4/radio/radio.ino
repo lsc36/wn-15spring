@@ -29,7 +29,7 @@ struct tx_ack {
 #pragma pack(pop)
 
 #define QLEN 16
-#define MAX_RETRY 5
+#define MAX_RETRY 16
 struct tx_data {
     uint8_t buffer[QLEN][64];
     size_t len[QLEN];
@@ -50,10 +50,6 @@ struct rx_data {
 struct tx_data tx;
 struct rx_data rx;
 struct tx_ack pkt_tx_ack;
-
-#define NEIGHBOR_TABLE_SIZE 64
-#define NEIGHBOR_TABLE_MASK (NEIGHBOR_TABLE_SIZE - 1)
-uint32_t neighbor_lastalive[NEIGHBOR_TABLE_SIZE];
 
 uint16_t get_checksum(uint8_t *data,int len) {
     int i;
@@ -87,12 +83,6 @@ uint8_t* rx_hlr(uint8_t len,uint8_t *frm,uint8_t lqi,uint8_t crc_fail) {
         if(rx_hdr->panid != PAN_ID) {
             goto out;
         }
-        // record neighbor
-        if (neighbor_lastalive[rx_hdr->src_addr & NEIGHBOR_TABLE_MASK] == 0) {
-            Serial.print("new neighbor ");
-            Serial.println(rx_hdr->src_addr);
-        }
-        neighbor_lastalive[rx_hdr->src_addr & NEIGHBOR_TABLE_MASK] = micros();
         if(rx_hdr->dst_addr != node_id && rx_hdr->dst_addr != BROADCAST_ID) {
             goto out;
         }
@@ -124,10 +114,10 @@ int rx_dispatch() {
         }
     } else if(type == 0x41) {
         struct tx_header *rx_hdr = (struct tx_header*)rx.buffer[qid];
-        Serial.print("received frame from ");
-        Serial.println(rx_hdr->src_addr);
         pkt_tx_ack.seq = rx_hdr->seq;
         ZigduinoRadio.txFrame((uint8_t*)&pkt_tx_ack,sizeof(pkt_tx_ack));
+        Serial.print("received frame from ");
+        Serial.println(rx_hdr->src_addr);
         if (*(uint16_t*)&rx.buffer[qid][sizeof(tx_header)] == ROUTE_CTRL_MAGIC)
             route_dispatch(rx.buffer[qid]);
     }
@@ -300,7 +290,6 @@ void route_dispatch(uint8_t *frm)
             visited_pos = (visited_pos + 1) % VISITED_SIZE;
 
             if (r_entry->hops >= ROUTE_MAX_HOPS) break;
-            Serial.println("rebroadcasting ping");
             route_entry_t new_entry;
             new_entry.dst_addr = r_entry->dst_addr;
             new_entry.hops = r_entry->hops + 1;
@@ -308,6 +297,7 @@ void route_dispatch(uint8_t *frm)
                 new_entry.path[i] = r_entry->path[i];
             new_entry.path[r_entry->hops] = node_id;
             send_ping(&new_entry, hdr->id);
+            Serial.println("rebroadcasting ping");
         }
         break;
     case ROUTE_CTRL_PING_REPLY:
@@ -335,14 +325,14 @@ void route_dispatch(uint8_t *frm)
                 }
             }
             if (!dst_addr) break;
-            Serial.print("resending ping reply to ");
-            Serial.println(dst_addr);
             route_entry_t new_entry;
             new_entry.dst_addr = r_entry->dst_addr;
             new_entry.hops = r_entry->hops;
             for (int i = 0; i < r_entry->hops; i++)
                 new_entry.path[i] = r_entry->path[i];
             send_ping_reply(&new_entry, dst_addr);
+            Serial.print("resending ping reply to ");
+            Serial.println(dst_addr);
         }
         break;
     }
@@ -384,7 +374,7 @@ void setup() {
     pinMode(13,OUTPUT);
     digitalWrite(13,HIGH);
 
-    node_id = random(1, 0xFFFF);
+    node_id = 1;  // [1, 65534]
 
     tx.qfront = tx.qback = 0;
     tx.difs_ts = micros();
@@ -413,14 +403,12 @@ void setup() {
     ZigduinoRadio.setParam(phyPanId,(uint16_t)PAN_ID);
     ZigduinoRadio.setParam(phyShortAddr,(uint16_t)node_id);
     ZigduinoRadio.setParam(phyCCAMode,(uint8_t)0x3);
-    Serial.begin(9600);
+    Serial.begin(115200);
 
     Serial.print("node_id = ");
     Serial.println(node_id);
 
     ZigduinoRadio.attachReceiveFrame(rx_hlr);
-
-    for (int i = 0; i < NEIGHBOR_TABLE_SIZE; i++) neighbor_lastalive[i] = 0;
 
     route_setup();
 }
