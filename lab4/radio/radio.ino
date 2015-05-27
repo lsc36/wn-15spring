@@ -117,14 +117,14 @@ int rx_dispatch() {
         Serial.print("received frame from ");
         Serial.println(rx_hdr->src_addr);
 
-	if(rx_hdr->dst_addr != BROADCAST_ID) {
-	    pkt_tx_ack.seq = rx_hdr->seq;
-	    ZigduinoRadio.txFrame((uint8_t*)&pkt_tx_ack,sizeof(pkt_tx_ack));
-	}
+        if(rx_hdr->dst_addr != BROADCAST_ID) {
+            pkt_tx_ack.seq = rx_hdr->seq;
+            ZigduinoRadio.txFrame((uint8_t*)&pkt_tx_ack,sizeof(pkt_tx_ack));
+        }
 
         if (*(uint16_t*)&rx.buffer[qid][sizeof(tx_header)] == DISCO_CTRL_MAGIC) {
-	    disco_rx_dispatch(&rx.buffer[qid][sizeof(tx_header)]);
-	}
+            disco_rx_dispatch(&rx.buffer[qid][sizeof(tx_header)]);
+        }
     }
     return 0;
 }
@@ -207,9 +207,9 @@ int tx_dispatch() {
     struct tx_header *tx_hdr = (struct tx_header*)tx.buffer[qid];
     Serial.print("!");
     if(tx_hdr->dst_addr != BROADCAST_ID) {
-	tx.state = 3;
+        tx.state = 3;
     } else {
-	tx.state = 5;
+        tx.state = 5;
     }
     ZigduinoRadio.txFrame(tx.buffer[qid],tx.len[qid]);
     tx_hdr->seq--;
@@ -220,9 +220,9 @@ int disco_init() {
     int i;
 
     for(i = 0;i < DISCO_LEN;i++) {
-	disco_query_vec[i].target_addr = 0xFFFF;
-	disco_broadcast_vec[i].target_addr = 0xFFFF;
-	disco_route_table[i].target_addr = 0xFFFF;
+        disco_query_vec[i].target_addr = 0xFFFF;
+        disco_broadcast_vec[i].target_addr = 0xFFFF;
+        disco_route_table[i].target_addr = 0xFFFF;
     }
     disco_query_dispatch_idx = 0;
     disco_broadcast_dispatch_idx = 0;
@@ -243,21 +243,21 @@ int disco_route_rx_query(uint16_t target_addr,uint16_t version) {
     Serial.println(target_addr);
 
     if(target_addr == node_id) {
-	disco_broadcast_add(node_id,version);
-	return 0;
+        disco_broadcast_add(node_id,version);
+        return 0;
     }
 
     for(i = 0;i < DISCO_LEN;i++) {
-	if(disco_route_table[i].target_addr == target_addr) {
-	    struct disco_route_table_entry *entry = &disco_route_table[i];
+        if(disco_route_table[i].target_addr == target_addr) {
+            struct disco_route_table_entry *entry = &disco_route_table[i];
 
-	    if(entry->version >= version) {
-		disco_broadcast_add(target_addr,entry->version);
-	    } else {
-		disco_route_invalidate(entry);
-		disco_query_add(target_addr,version);
-	    }
-	}
+            if(entry->version >= version) {
+                disco_broadcast_add(target_addr,entry->version);
+            } else {
+                disco_route_invalidate(entry);
+                disco_query_add(target_addr,version);
+            }
+        }
     }
 
     return 0;
@@ -268,43 +268,43 @@ int disco_route_rx_broadcast(uint16_t target_addr,uint16_t src_addr,uint16_t ver
     struct disco_route_table_entry *entry;
 
     if(target_addr == node_id) {
-	return 0;
+        return 0;
     }
-    
+
     Serial.print("rx_broadcast:");
     Serial.print(target_addr);
     Serial.print(" version:");
     Serial.println(version);
-    
+
     for(i = 0;i < DISCO_LEN;i++) {
-	if(disco_route_table[i].target_addr == target_addr) {
-	    entry = &disco_route_table[i];
+        if(disco_route_table[i].target_addr == target_addr) {
+            entry = &disco_route_table[i];
 
-	    if(entry->version > version) {
-		disco_broadcast_add(target_addr,entry->version);
-	    } else if(entry->version < version) {
-		disco_route_invalidate(entry);
+            if(entry->version > version) {
+                disco_broadcast_add(target_addr,entry->version);
+            } else if(entry->version < version) {
+                disco_route_invalidate(entry);
 
-		//replace entry
-		entry->target_addr = target_addr;
-		entry->dst_addr = src_addr;
-		entry->version = version;
+                //replace entry
+                entry->target_addr = target_addr;
+                entry->dst_addr = src_addr;
+                entry->version = version;
 
-		disco_query_del(target_addr);
-		disco_broadcast_add(target_addr,entry->version);
-	    }
+                disco_query_del(target_addr);
+                disco_broadcast_add(target_addr,entry->version);
+            }
 
-	    break;
+            break;
 
-	} else if(empty_idx == -1 && disco_route_table[i].target_addr == 0xFFFF) {
-	    empty_idx = i;
-	}
+        } else if(empty_idx == -1 && disco_route_table[i].target_addr == 0xFFFF) {
+            empty_idx = i;
+        }
     }
     if(i < DISCO_LEN) {
-	return 0;
+        return 0;
     }
     if(empty_idx == -1) {
-	return -1;
+        return -1;
     }
 
     //add entry
@@ -323,17 +323,17 @@ int disco_rx_dispatch(uint8_t *payload) {
     struct disco_ctrl_hdr *hdr = (struct disco_ctrl_hdr*)payload;
 
     if(hdr->type == DISCO_CTRL_QUERY) {
-	struct disco_query *query = (struct disco_query*)payload;
+        struct disco_query *query = (struct disco_query*)payload;
 
-	disco_route_rx_query(query->target_addr,query->version);
+        disco_route_rx_query(query->target_addr,query->version);
 
     } else if(hdr->type == DISCO_CTRL_BROADCAST) {
-	struct disco_broadcast *broadcast = (struct disco_broadcast*)payload;
+        struct disco_broadcast *broadcast = (struct disco_broadcast*)payload;
 
-	disco_route_rx_broadcast(
-		broadcast->target_addr,
-		broadcast->src_addr,
-		broadcast->version);
+        disco_route_rx_broadcast(
+                broadcast->target_addr,
+                broadcast->src_addr,
+                broadcast->version);
     }
 
     return 0;
@@ -371,14 +371,14 @@ int disco_query_dispatch() {
     int idx = -1;
 
     for(i = 0;i < DISCO_LEN;i++) {
-	disco_query_dispatch_idx = (disco_query_dispatch_idx + 1) % DISCO_LEN;
-	if(disco_query_vec[disco_query_dispatch_idx].target_addr != 0xFFFF) {
-	    idx = disco_query_dispatch_idx;
-	    break;
-	}
+        disco_query_dispatch_idx = (disco_query_dispatch_idx + 1) % DISCO_LEN;
+        if(disco_query_vec[disco_query_dispatch_idx].target_addr != 0xFFFF) {
+            idx = disco_query_dispatch_idx;
+            break;
+        }
     }
     if(idx == -1) {
-	return -1;
+        return -1;
     }
 
     disco_query(disco_query_vec[idx].target_addr,disco_query_vec[idx].version);
@@ -390,21 +390,21 @@ int disco_broadcast_dispatch() {
     int idx = -1;
 
     for(i = 0;i < DISCO_LEN;i++) {
-	disco_broadcast_dispatch_idx = (disco_broadcast_dispatch_idx + 1) % DISCO_LEN;
-	if(disco_broadcast_vec[disco_broadcast_dispatch_idx].target_addr != 0xFFFF) {
-	    idx = disco_broadcast_dispatch_idx;
-	    break;
-	}
+        disco_broadcast_dispatch_idx = (disco_broadcast_dispatch_idx + 1) % DISCO_LEN;
+        if(disco_broadcast_vec[disco_broadcast_dispatch_idx].target_addr != 0xFFFF) {
+            idx = disco_broadcast_dispatch_idx;
+            break;
+        }
     }
     if(idx == -1) {
-	return -1;
+        return -1;
     }
 
     disco_broadcast(disco_broadcast_vec[idx].target_addr,disco_broadcast_vec[idx].version);
 
     disco_broadcast_vec[idx].counter -= 1;
     if(disco_broadcast_vec[idx].counter <= 0) {
-	disco_broadcast_vec[idx].target_addr = 0xFFFF;
+        disco_broadcast_vec[idx].target_addr = 0xFFFF;
     }
     return 0;
 }
@@ -413,20 +413,20 @@ int disco_query_add(uint16_t target_addr,uint16_t version) {
     int sel_idx = -1;
 
     for(i = 0;i < DISCO_LEN;i++) {
-	if(disco_query_vec[i].target_addr == target_addr) {
-	    if(disco_query_vec[i].version < version) {
-		sel_idx = i;
-		break;
-	    } else {
-		sel_idx = -1;
-		break;
-	    }
-	}else if(sel_idx == -1 && disco_query_vec[i].target_addr == 0xFFFF) {
-	    sel_idx = i;
-	}
+        if(disco_query_vec[i].target_addr == target_addr) {
+            if(disco_query_vec[i].version < version) {
+                sel_idx = i;
+                break;
+            } else {
+                sel_idx = -1;
+                break;
+            }
+        }else if(sel_idx == -1 && disco_query_vec[i].target_addr == 0xFFFF) {
+            sel_idx = i;
+        }
     }
     if(sel_idx == -1) {
-	return -1;
+        return -1;
     }
 
     disco_query_vec[sel_idx].target_addr = target_addr;
@@ -437,9 +437,9 @@ int disco_query_add(uint16_t target_addr,uint16_t version) {
 int disco_query_del(uint16_t target_addr) {
     int i;
     for(i = 0;i < DISCO_LEN;i++) {
-	if(disco_query_vec[i].target_addr == target_addr) {
-	    disco_query_vec[i].target_addr = 0xFFFF;
-	}
+        if(disco_query_vec[i].target_addr == target_addr) {
+            disco_query_vec[i].target_addr = 0xFFFF;
+        }
     }
     return 0;
 }
@@ -448,20 +448,20 @@ int disco_broadcast_add(uint16_t target_addr,uint16_t version) {
     int sel_idx = -1;
 
     for(i = 0;i < DISCO_LEN;i++) {
-	if(disco_broadcast_vec[i].target_addr == target_addr) {
-	    if(disco_broadcast_vec[i].version < version) {
-		sel_idx = i;
-		break;
-	    } else {
-		sel_idx = -1;
-		break;
-	    }
-	}else if(sel_idx == -1 && disco_broadcast_vec[i].target_addr == 0xFFFF) {
-	    sel_idx = i;
-	}
+        if(disco_broadcast_vec[i].target_addr == target_addr) {
+            if(disco_broadcast_vec[i].version < version) {
+                sel_idx = i;
+                break;
+            } else {
+                sel_idx = -1;
+                break;
+            }
+        }else if(sel_idx == -1 && disco_broadcast_vec[i].target_addr == 0xFFFF) {
+            sel_idx = i;
+        }
     }
     if(sel_idx == -1) {
-	return -1;
+        return -1;
     }
 
     disco_broadcast_vec[sel_idx].target_addr = target_addr;
@@ -473,9 +473,9 @@ int disco_broadcast_add(uint16_t target_addr,uint16_t version) {
 int disco_broadcast_del(uint16_t target_addr) {
     int i;
     for(i = 0;i < DISCO_LEN;i++) {
-	if(disco_broadcast_vec[i].target_addr == target_addr) {
-	    disco_broadcast_vec[i].target_addr = 0xFFFF;
-	}
+        if(disco_broadcast_vec[i].target_addr == target_addr) {
+            disco_broadcast_vec[i].target_addr = 0xFFFF;
+        }
     }
     return 0;
 }
@@ -483,16 +483,16 @@ int disco_broadcast_del(uint16_t target_addr) {
 int disco_route_display() {
     int i;
     for(i = 0;i < DISCO_LEN;i++) {
-	if(disco_route_table[i].target_addr != 0xFFFF) {
-	    struct disco_route_table_entry *entry = &disco_route_table[i];
+        if(disco_route_table[i].target_addr != 0xFFFF) {
+            struct disco_route_table_entry *entry = &disco_route_table[i];
 
-	    Serial.print("target_addr:");
-	    Serial.print(entry->target_addr);
-	    Serial.print(" dst_addr:");
-	    Serial.print(entry->dst_addr);
-	    Serial.print(" version:");
-	    Serial.println(entry->version);
-	}
+            Serial.print("target_addr:");
+            Serial.print(entry->target_addr);
+            Serial.print(" dst_addr:");
+            Serial.print(entry->dst_addr);
+            Serial.print(" version:");
+            Serial.println(entry->version);
+        }
     }
     return 0;
 }
@@ -500,14 +500,14 @@ uint16_t disco_route_get(uint16_t target_addr) {
     int i;
 
     if(target_addr == node_id) {
-	return node_id;
+        return node_id;
     }
 
     for(i = 0;i < DISCO_LEN;i++) {
-	if(disco_route_table[i].target_addr == target_addr) {
-	    struct disco_route_table_entry *entry = &disco_route_table[i];
-	    return entry->dst_addr;
-	}
+        if(disco_route_table[i].target_addr == target_addr) {
+            struct disco_route_table_entry *entry = &disco_route_table[i];
+            return entry->dst_addr;
+        }
     }
 
     disco_query_add(target_addr,1);
@@ -575,9 +575,9 @@ void loop() {
     }
 
     if(Serial.available()) {
-	size_t len = Serial.readBytes(buf,32);
-	uint16_t ping_dst_addr = atoi(buf);
-	disco_route_get(ping_dst_addr);
+        size_t len = Serial.readBytes(buf,32);
+        uint16_t ping_dst_addr = atoi(buf);
+        disco_route_get(ping_dst_addr);
     }
 
     if(counter == 0) {
@@ -585,18 +585,18 @@ void loop() {
         Serial.print(" ");
         Serial.println(noack);
 
-	disco_route_display();
+        disco_route_display();
 
     }
     counter += 1;
 
     if(disco_clock == 0) {
 
-	disco_query_dispatch();
+        disco_query_dispatch();
 
     } else if(disco_clock == 2048) {
 
-	disco_broadcast_dispatch();
+        disco_broadcast_dispatch();
 
     }
     disco_clock = (disco_clock + 1) & 0xFFF;
