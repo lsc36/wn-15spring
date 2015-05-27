@@ -282,8 +282,12 @@ int disco_route_rx_query(uint16_t target_addr,uint16_t version) {
                 disco_route_invalidate(entry);
                 disco_query_add(target_addr,version);
             }
+
+            return 0;
         }
     }
+
+    disco_query_add(target_addr,version);
 
     return 0;
 }
@@ -601,7 +605,7 @@ void setup() {
     pinMode(13,OUTPUT);
     digitalWrite(13,HIGH);
 
-    node_id = 1;
+    node_id = 2;
 
     tx.qfront = tx.qback = 0;
     tx.difs_ts = micros();
