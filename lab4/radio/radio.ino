@@ -284,15 +284,15 @@ void route_dispatch(uint8_t *frm)
             if (visited) break;
 
             if (r_entry->hops >= ROUTE_MAX_HOPS) break;
-            route_entry_t *new_entry = (route_entry_t*)buf;
-            new_entry->dst_addr = r_entry->dst_addr;
-            new_entry->hops = r_entry->hops + 1;
+            route_entry_t new_entry;
+            new_entry.dst_addr = r_entry->dst_addr;
+            new_entry.hops = r_entry->hops + 1;
             Serial.print("new entry: hops = ");
-            Serial.println(new_entry->hops);
+            Serial.println(new_entry.hops);
             for (int i = 0; i < r_entry->hops; i++)
-                new_entry->path[i] = r_entry->path[i];
-            new_entry->path[r_entry->hops] = node_id;
-            send_route_request(new_entry);
+                new_entry.path[i] = r_entry->path[i];
+            new_entry.path[r_entry->hops] = node_id;
+            send_route_request(&new_entry);
         }
         break;
     case ROUTE_CTRL_REPLY:
