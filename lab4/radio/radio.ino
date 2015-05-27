@@ -327,7 +327,22 @@ void route_dispatch(uint8_t *frm)
             }
             Serial.println();
         } else {
-            // TODO
+            uint16_t dst_addr = 0;
+            for (int i = 1; i < r_entry->hops; i++) {
+                if (r_entry->path[i] == node_id) {
+                    dst_addr = r_entry->path[i - 1];
+                    break;
+                }
+            }
+            if (!dst_addr) break;
+            Serial.print("resending ping reply to ");
+            Serial.println(dst_addr);
+            route_entry_t new_entry;
+            new_entry.dst_addr = r_entry->dst_addr;
+            new_entry.hops = r_entry->hops;
+            for (int i = 0; i < r_entry->hops; i++)
+                new_entry.path[i] = r_entry->path[i];
+            send_ping_reply(&new_entry, dst_addr);
         }
         break;
     }
