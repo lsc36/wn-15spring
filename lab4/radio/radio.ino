@@ -14,6 +14,8 @@ uint16_t node_id;
 #define BACKOFF		4096
 uint32_t backoff_window	=   16;
 
+#define BUF_SIZE 128
+
 #pragma pack(push)
 #pragma pack(1)
 struct tx_header {
@@ -33,7 +35,7 @@ struct tx_ack {
 #define QLEN 16
 #define MAX_RETRY 16
 struct tx_data {
-    uint8_t buffer[QLEN][64];
+    uint8_t buffer[QLEN][BUF_SIZE];
     size_t len[QLEN];
     int qfront, qback;
     int difs_ts;
@@ -44,7 +46,7 @@ struct tx_data {
     int retry;
 };
 struct rx_data {
-    uint8_t buffer[QLEN][64];
+    uint8_t buffer[QLEN][BUF_SIZE];
     size_t len[QLEN];
     int qfront, qback;
 };
@@ -218,7 +220,7 @@ int tx_dispatch() {
 
 
 int route_state;
-char buf[64];
+char buf[BUF_SIZE];
 
 void send_ping(route_entry_t *r_entry, uint16_t ping_id)
 {
@@ -366,7 +368,7 @@ void route_setup()
 void route_loop()
 {
     if (route_state == ROUTE_STATE_IDLE && Serial.available()) {
-        size_t len = Serial.readBytes(buf, 128);
+        size_t len = Serial.readBytes(buf, BUF_SIZE);
         buf[len] = 0;
         uint16_t ping_dst_addr = atoi(buf);
         route_entry_t new_entry;
@@ -399,7 +401,7 @@ void setup() {
     pinMode(13,OUTPUT);
     digitalWrite(13,HIGH);
 
-    node_id = 1;  // [1, 65534]
+    node_id = 2;  // [1, 65534]
 
     tx.qfront = tx.qback = 0;
     tx.difs_ts = micros();
