@@ -1,6 +1,8 @@
 #include <ZigduinoRadio.h>
 #include "route.h"
 
+//#define VERBOSE
+
 #define BROADCAST_ID	0xFFFF
 #define PAN_ID		0xABCD
 #define CHANNEL		24
@@ -116,8 +118,10 @@ int rx_dispatch() {
         struct tx_header *rx_hdr = (struct tx_header*)rx.buffer[qid];
         pkt_tx_ack.seq = rx_hdr->seq;
         ZigduinoRadio.txFrame((uint8_t*)&pkt_tx_ack,sizeof(pkt_tx_ack));
+#ifdef VERBOSE
         Serial.print("received frame from ");
         Serial.println(rx_hdr->src_addr);
+#endif
         if (*(uint16_t*)&rx.buffer[qid][sizeof(tx_header)] == ROUTE_CTRL_MAGIC)
             route_dispatch(rx.buffer[qid]);
     }
@@ -170,8 +174,10 @@ int tx_state() {
     return 0;
 }
 int tx_build(uint16_t dst_addr,uint8_t *payload,size_t len) {
+#ifdef VERBOSE
     Serial.print("sending frame to ");
     Serial.println(dst_addr);
+#endif
     int qid = tx.qback; tx.qback = (tx.qback + 1) % QLEN;
     struct tx_header *tx_hdr = (struct tx_header*)tx.buffer[qid];
     uint16_t checksum;
@@ -266,6 +272,7 @@ void route_dispatch(uint8_t *frm)
         visited_list[visited_pos] = hdr->id;
         visited_pos = (visited_pos + 1) % VISITED_SIZE;
 
+#ifdef VERBOSE
         Serial.print("received ping: hops = ");
         Serial.print(r_entry->hops);
         Serial.print(" ");
@@ -274,9 +281,12 @@ void route_dispatch(uint8_t *frm)
             Serial.print(" -> ");
             Serial.print(r_entry->path[i]);
         }
+#endif
         if (r_entry->dst_addr == node_id) {
+#ifdef VERBOSE
             Serial.print(" -> ");
             Serial.println(r_entry->dst_addr);
+#endif
             if (r_entry->hops >= ROUTE_MAX_HOPS) break;
             Serial.print("sending ping reply to ");
             Serial.println(r_entry->path[r_entry->hops - 1]);
@@ -288,8 +298,10 @@ void route_dispatch(uint8_t *frm)
             new_entry.path[r_entry->hops] = node_id;
             send_ping_reply(&new_entry, r_entry->path[r_entry->hops - 1], hdr->id);
         } else {
+#ifdef VERBOSE
             Serial.print(" -> ... -> ");
             Serial.println(r_entry->dst_addr);
+#endif
 
             if (r_entry->hops >= ROUTE_MAX_HOPS) break;
             route_entry_t new_entry;
