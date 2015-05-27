@@ -51,10 +51,6 @@ struct tx_data tx;
 struct rx_data rx;
 struct tx_ack pkt_tx_ack;
 
-#define NEIGHBOR_TABLE_SIZE 64
-#define NEIGHBOR_TABLE_MASK (NEIGHBOR_TABLE_SIZE - 1)
-uint32_t neighbor_lastalive[NEIGHBOR_TABLE_SIZE];
-
 uint16_t get_checksum(uint8_t *data,int len) {
     int i;
     uint8_t checksum = 0;
@@ -87,12 +83,6 @@ uint8_t* rx_hlr(uint8_t len,uint8_t *frm,uint8_t lqi,uint8_t crc_fail) {
         if(rx_hdr->panid != PAN_ID) {
             goto out;
         }
-        // record neighbor
-        if (neighbor_lastalive[rx_hdr->src_addr & NEIGHBOR_TABLE_MASK] == 0) {
-            Serial.print("new neighbor ");
-            Serial.println(rx_hdr->src_addr);
-        }
-        neighbor_lastalive[rx_hdr->src_addr & NEIGHBOR_TABLE_MASK] = micros();
         if(rx_hdr->dst_addr != node_id && rx_hdr->dst_addr != BROADCAST_ID) {
             goto out;
         }
@@ -128,7 +118,10 @@ int rx_dispatch() {
         Serial.println(rx_hdr->src_addr);
         pkt_tx_ack.seq = rx_hdr->seq;
         ZigduinoRadio.txFrame((uint8_t*)&pkt_tx_ack,sizeof(pkt_tx_ack));
-        //if (*(uint16_t*)&rx.buffer[qid][sizeof(tx_header)] == ROUTE_CTRL_MAGIC)
+
+        if (*(uint16_t*)&rx.buffer[qid][sizeof(tx_header)] == DISCO_CTRL_MAGIC) {
+	    disco_rx_dispatch(&rx.buffer[qid][sizeof(tx_header)]);
+	}
     }
     return 0;
 }
@@ -219,15 +212,106 @@ int tx_dispatch() {
 int disco_init() {
     int i;
 
-    for(i = 0;i < DISCO_QLEN;i++) {
+    for(i = 0;i < DISCO_LEN;i++) {
 	disco_query_vec[i].target_addr = 0xFFFF;
 	disco_broadcast_vec[i].target_addr = 0xFFFF;
+	disco_route_table[i].target_addr = 0xFFFF;
     }
     disco_query_dispatch_idx = 0;
     disco_broadcast_dispatch_idx = 0;
 
     return 0;
 }
+
+int disco_route_invalidate(struct disco_route_table_entry *entry) {
+    disco_broadcast_del(entry->target_addr);
+    entry->target_addr = 0xFFFF;
+    return 0;
+}
+
+int disco_route_rx_query(uint16_t target_addr,uint16_t version) {
+    int i;
+
+    for(i = 0;i < DISCO_LEN;i++) {
+	if(disco_route_table[i].target_addr == target_addr) {
+	    struct disco_route_table_entry *entry = &disco_route_table[i];
+
+	    if(entry->version >= version) {
+		disco_broadcast_add(target_addr,entry->version);
+	    } else {
+		disco_route_invalidate(entry);
+		disco_query_add(target_addr,version);
+	    }
+	}
+    }
+
+    return 0;
+}
+int disco_route_rx_broadcast(uint16_t target_addr,uint16_t src_addr,uint16_t version) {
+    int i;
+    int empty_idx = -1;
+    struct disco_route_table_entry *entry;
+    
+    for(i = 0;i < DISCO_LEN;i++) {
+	if(disco_route_table[i].target_addr == target_addr) {
+	    entry = &disco_route_table[i];
+
+	    if(entry->version > version) {
+		disco_broadcast_add(target_addr,entry->version);
+	    } else if(entry->version < version) {
+		disco_route_invalidate(entry);
+
+		//replace entry
+		entry->target_addr = target_addr;
+		entry->dst_addr = src_addr;
+		entry->version = version;
+
+		disco_broadcast_add(target_addr,entry->version);
+	    }
+
+	    break;
+
+	} else if(empty_idx == -1 && disco_route_table[i].target_addr == 0xFFFF) {
+	    empty_idx = i;
+	}
+    }
+    if(i < DISCO_LEN) {
+	return 0;
+    }
+    if(empty_idx == -1) {
+	return -1;
+    }
+
+    //add entry
+    entry = &disco_route_table[empty_idx];
+    entry->target_addr = target_addr;
+    entry->dst_addr = src_addr;
+    entry->version = version;
+
+    disco_broadcast_add(target_addr,entry->version);
+
+    return 0;
+}
+
+int disco_rx_dispatch(uint8_t *payload) {
+    struct disco_ctrl_hdr *hdr = (struct disco_ctrl_hdr*)payload;
+
+    if(hdr->type == DISCO_CTRL_QUERY) {
+	struct disco_query *query = (struct disco_query*)payload;
+
+	disco_route_rx_query(query->target_addr,query->version);
+
+    } else if(hdr->type == DISCO_CTRL_BROADCAST) {
+	struct disco_broadcast *broadcast = (struct disco_broadcast*)payload;
+
+	disco_route_rx_broadcast(
+		broadcast->target_addr,
+		broadcast->src_addr,
+		broadcast->version);
+    }
+
+    return 0;
+}   
 int disco_query(uint16_t target_addr,uint16_t version) {
     struct disco_query query;
 
@@ -245,6 +329,7 @@ int disco_broadcast(uint16_t target_addr,uint16_t version) {
     broadcast.hdr.magic = DISCO_CTRL_MAGIC;
     broadcast.hdr.type = DISCO_CTRL_QUERY;
     broadcast.target_addr = target_addr;
+    broadcast.src_addr = node_id;
     broadcast.version = version;
 
     tx_build(BROADCAST_ID,(uint8_t*)&broadcast,sizeof(broadcast));
@@ -255,8 +340,8 @@ int disco_query_dispatch() {
     int i;
     int idx = -1;
 
-    for(i = 0;i < DISCO_QLEN;i++) {
-	disco_query_dispatch_idx = (disco_query_dispatch_idx + 1) % DISCO_QLEN;
+    for(i = 0;i < DISCO_LEN;i++) {
+	disco_query_dispatch_idx = (disco_query_dispatch_idx + 1) % DISCO_LEN;
 	if(disco_query_vec[disco_query_dispatch_idx].target_addr != 0xFFFF) {
 	    idx = disco_query_dispatch_idx;
 	    break;
@@ -274,8 +359,8 @@ int disco_broadcast_dispatch() {
     int i;
     int idx = -1;
 
-    for(i = 0;i < DISCO_QLEN;i++) {
-	disco_broadcast_dispatch_idx = (disco_broadcast_dispatch_idx + 1) % DISCO_QLEN;
+    for(i = 0;i < DISCO_LEN;i++) {
+	disco_broadcast_dispatch_idx = (disco_broadcast_dispatch_idx + 1) % DISCO_LEN;
 	if(disco_broadcast_vec[disco_broadcast_dispatch_idx].target_addr != 0xFFFF) {
 	    idx = disco_broadcast_dispatch_idx;
 	    break;
@@ -295,31 +380,72 @@ int disco_broadcast_dispatch() {
 }
 int disco_query_add(uint16_t target_addr,uint16_t version) {
     int i;
+    int sel_idx = -1;
 
-    for(i = 0;i < DISCO_QLEN;i++) {
-	if(disco_query_vec[i].target_addr == 0xFFFF) {
-	    disco_query_vec[i].target_addr = target_addr;
-	    disco_query_vec[i].version = version;
-	    break;
+    for(i = 0;i < DISCO_LEN;i++) {
+	if(disco_query_vec[i].target_addr == target_addr) {
+	    if(disco_query_vec[i].version < version) {
+		sel_idx = i;
+		break;
+	    } else {
+		sel_idx = -1;
+		break;
+	    }
+	}else if(sel_idx == -1 && disco_query_vec[i].target_addr == 0xFFFF) {
+	    sel_idx = i;
 	}
     }
-    if(i == DISCO_QLEN) {
+    if(sel_idx == -1) {
 	return -1;
+    }
+
+    disco_query_vec[sel_idx].target_addr = target_addr;
+    disco_query_vec[sel_idx].version = version;
+
+    return 0;
+}
+int disco_query_del(uint16_t target_addr) {
+    int i;
+    for(i = 0;i < DISCO_LEN;i++) {
+	if(disco_query_vec[i].target_addr == target_addr) {
+	    disco_query_vec[i].target_addr = 0xFFFF;
+	}
     }
     return 0;
 }
 int disco_broadcast_add(uint16_t target_addr,uint16_t version) {
     int i;
+    int sel_idx = -1;
 
-    for(i = 0;i < DISCO_QLEN;i++) {
-	if(disco_broadcast_vec[i].target_addr == 0xFFFF) {
-	    disco_broadcast_vec[i].target_addr = target_addr;
-	    disco_broadcast_vec[i].version = version;
-	    break;
+    for(i = 0;i < DISCO_LEN;i++) {
+	if(disco_broadcast_vec[i].target_addr == target_addr) {
+	    if(disco_broadcast_vec[i].version < version) {
+		sel_idx = i;
+		break;
+	    } else {
+		sel_idx = -1;
+		break;
+	    }
+	}else if(sel_idx == -1 && disco_broadcast_vec[i].target_addr == 0xFFFF) {
+	    sel_idx = i;
 	}
     }
-    if(i == DISCO_QLEN) {
+    if(sel_idx == -1) {
 	return -1;
+    }
+
+    disco_broadcast_vec[sel_idx].target_addr = target_addr;
+    disco_broadcast_vec[sel_idx].version = version;
+    disco_broadcast_vec[sel_idx].counter = 10;
+
+    return 0;
+}
+int disco_broadcast_del(uint16_t target_addr) {
+    int i;
+    for(i = 0;i < DISCO_LEN;i++) {
+	if(disco_broadcast_vec[i].target_addr == target_addr) {
+	    disco_broadcast_vec[i].target_addr = 0xFFFF;
+	}
     }
     return 0;
 }
@@ -366,8 +492,6 @@ void setup() {
     Serial.println(node_id);
 
     ZigduinoRadio.attachReceiveFrame(rx_hlr);
-
-    for (int i = 0; i < NEIGHBOR_TABLE_SIZE; i++) neighbor_lastalive[i] = 0;
 }
 
 int okack = 0;
@@ -381,6 +505,17 @@ void loop() {
         rx_dispatch();
     }
 
+    if(counter == 0) {
+        Serial.print(okack);
+        Serial.print(" ");
+        Serial.println(noack);
+    } else if(counter == 1) {
+	disco_query_dispatch();
+    } else if(counter == 32768) {
+	disco_broadcast_dispatch();
+    }
+    counter += 1;
+
     ret = tx_state();
     if(ret == 1) {
         tx_dispatch();
@@ -393,11 +528,4 @@ void loop() {
         noack += 1;
         //Serial.println("NOACK");
     }
-
-    if(counter == 0) {
-        Serial.print(okack);
-        Serial.print(" ");
-        Serial.println(noack);
-    }
-    counter += 1;
 }
