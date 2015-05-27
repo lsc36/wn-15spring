@@ -568,6 +568,7 @@ int ping_send(uint8_t type, uint16_t src_addr, uint16_t target_addr)
 {
     ping_hdr_t *nhdr = &pingbuf[pingbuf_pos];
     pingbuf_pos = (pingbuf_pos + 1) % PING_BUF_SIZE;
+    nhdr->magic = ROUTE_CTRL_MAGIC;
     nhdr->type = type;
     nhdr->src_addr = src_addr;
     nhdr->target_addr = target_addr;
