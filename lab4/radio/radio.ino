@@ -489,7 +489,7 @@ int disco_broadcast_add(uint16_t target_addr,uint16_t version) {
 
     disco_broadcast_vec[sel_idx].target_addr = target_addr;
     disco_broadcast_vec[sel_idx].version = version;
-    disco_broadcast_vec[sel_idx].counter = 10;
+    disco_broadcast_vec[sel_idx].counter = 1;
 
     return 0;
 }
@@ -636,12 +636,12 @@ void loop() {
 
         disco_query_dispatch();
 
-    } else if(disco_clock == 2048) {
+    } else if(disco_clock == 8192) {
 
         disco_broadcast_dispatch();
 
     }
-    disco_clock = (disco_clock + 1) & 0xFFF;
+    disco_clock = (disco_clock + 1) & 16383;
 
     ret = tx_state();
     if(ret == 1) {
