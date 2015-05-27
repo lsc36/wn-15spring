@@ -14,7 +14,7 @@
 
 #define OFFSET(T, m) ((size_t)&((T*)0)->m)
 
-#define PING_TIMEOUT 1000000
+#define PING_TIMEOUT 3000000
 
 struct route_entry_t {
     uint16_t dst_addr;
