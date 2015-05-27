@@ -230,12 +230,12 @@ void send_ping(route_entry_t *r_entry, uint16_t ping_id)
     tx_build(BROADCAST_ID, (uint8_t*)buf, len);
 }
 
-void send_ping_reply(route_entry_t *r_entry, uint16_t dst_addr)
+void send_ping_reply(route_entry_t *r_entry, uint16_t dst_addr, uint16_t ping_id)
 {
     route_ctrl_hdr hdr;
     hdr.magic = ROUTE_CTRL_MAGIC;
     hdr.type = ROUTE_CTRL_PING_REPLY;
-    hdr.id = random(1, 65535);
+    hdr.id = ping_id;
     size_t len = 0;
     memcpy(buf, &hdr, sizeof(hdr));
     len += sizeof(hdr);
@@ -248,6 +248,7 @@ void send_ping_reply(route_entry_t *r_entry, uint16_t dst_addr)
 
 uint16_t visited_list[VISITED_SIZE];
 int visited_pos;
+uint16_t last_ping_id;
 uint32_t last_ping_time;
 
 void route_dispatch(uint8_t *frm)
@@ -276,7 +277,7 @@ void route_dispatch(uint8_t *frm)
             for (int i = 0; i < r_entry->hops; i++)
                 new_entry.path[i] = r_entry->path[i];
             new_entry.path[r_entry->hops] = node_id;
-            send_ping_reply(&new_entry, r_entry->path[r_entry->hops - 1]);
+            send_ping_reply(&new_entry, r_entry->path[r_entry->hops - 1], hdr->id);
         } else {
             Serial.print(" -> ... -> ");
             Serial.println(r_entry->dst_addr);
@@ -302,7 +303,9 @@ void route_dispatch(uint8_t *frm)
         break;
     case ROUTE_CTRL_PING_REPLY:
         Serial.println("received ping reply");
-        if (r_entry->dst_addr == node_id) {
+        if (r_entry->dst_addr == node_id && last_ping_id == hdr->id) {
+            route_state = ROUTE_STATE_IDLE;
+            last_ping_id = 0;
             uint32_t rtt = micros() - last_ping_time;
             Serial.print("rtt = ");
             Serial.print(rtt / 1000.0);
@@ -330,7 +333,7 @@ void route_dispatch(uint8_t *frm)
             new_entry.hops = r_entry->hops;
             for (int i = 0; i < r_entry->hops; i++)
                 new_entry.path[i] = r_entry->path[i];
-            send_ping_reply(&new_entry, dst_addr);
+            send_ping_reply(&new_entry, dst_addr, hdr->id);
             Serial.print("resending ping reply to ");
             Serial.println(dst_addr);
         }
@@ -341,6 +344,7 @@ void route_dispatch(uint8_t *frm)
 void route_setup()
 {
     route_state = ROUTE_STATE_IDLE;
+    last_ping_id = 0;
     for (int i = 0; i < VISITED_SIZE; i++) visited_list[i] = 0;
     visited_pos = 0;
 }
@@ -357,9 +361,16 @@ void route_loop()
         new_entry.path[0] = node_id;
         uint16_t ping_id = random(1, 65535);
         send_ping(&new_entry, ping_id);
+        last_ping_id = ping_id;
         last_ping_time = micros();
         visited_list[visited_pos] = ping_id;
         visited_pos = (visited_pos + 1) % VISITED_SIZE;
+        route_state = ROUTE_STATE_WAIT_PING_REPLY;
+    } else if (route_state == ROUTE_STATE_WAIT_PING_REPLY
+            && micros() - last_ping_time > PING_TIMEOUT) {
+        Serial.println("ping timeout");
+        last_ping_id = 0;
+        route_state = ROUTE_STATE_IDLE;
     }
 }
 

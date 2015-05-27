@@ -8,10 +8,13 @@
 #define ROUTE_CTRL_PING_REPLY 0x8
 
 #define ROUTE_STATE_IDLE 0
+#define ROUTE_STATE_WAIT_PING_REPLY 1
 
 #define VISITED_SIZE 16
 
 #define OFFSET(T, m) ((size_t)&((T*)0)->m)
+
+#define PING_TIMEOUT 1000000
 
 struct route_entry_t {
     uint16_t dst_addr;
