@@ -36,6 +36,10 @@ struct disco_route_table_entry {
     uint16_t dst_addr;
     uint16_t version;
 };
+struct disco_callback_entry {
+    void (*callback)(uint16_t,uint16_t);
+    uint16_t target_addr;
+};
 
 struct disco_query_entry disco_query_vec[DISCO_LEN];
 struct disco_broadcast_entry disco_broadcast_vec[DISCO_LEN];
@@ -44,3 +48,4 @@ int disco_query_dispatch_idx;
 int disco_broadcast_dispatch_idx;
 
 struct disco_route_table_entry disco_route_table[DISCO_LEN];
+struct disco_callback_entry disco_callback_table[DISCO_LEN];
