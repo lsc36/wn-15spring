@@ -1,5 +1,5 @@
 #include <ZigduinoRadio.h>
-#include "route.h"
+#include "disco.h"
 
 #define BROADCAST_ID	0xFFFF
 #define PAN_ID		0xABCD
@@ -128,8 +128,7 @@ int rx_dispatch() {
         Serial.println(rx_hdr->src_addr);
         pkt_tx_ack.seq = rx_hdr->seq;
         ZigduinoRadio.txFrame((uint8_t*)&pkt_tx_ack,sizeof(pkt_tx_ack));
-        if (*(uint16_t*)&rx.buffer[qid][sizeof(tx_header)] == ROUTE_CTRL_MAGIC)
-            route_dispatch(rx.buffer[qid]);
+        //if (*(uint16_t*)&rx.buffer[qid][sizeof(tx_header)] == ROUTE_CTRL_MAGIC)
     }
     return 0;
 }
@@ -217,150 +216,113 @@ int tx_dispatch() {
     return 0;
 }
 
+int disco_init() {
+    int i;
 
-/**************** start of route section ****************/
-
-
-int route_state;
-char buf[64];
-
-void send_ping(route_entry_t *r_entry, uint16_t ping_id)
-{
-    route_ctrl_hdr hdr;
-    hdr.magic = ROUTE_CTRL_MAGIC;
-    hdr.type = ROUTE_CTRL_PING;
-    hdr.id = ping_id;
-    size_t len = 0;
-    memcpy(buf, &hdr, sizeof(hdr));
-    len += sizeof(hdr);
-    memcpy(buf + len, r_entry, OFFSET(route_entry_t, path));
-    len += OFFSET(route_entry_t, path);
-    memcpy(buf + len, r_entry->path, r_entry->hops * sizeof(uint16_t));
-    len += r_entry->hops * sizeof(uint16_t);
-    tx_build(BROADCAST_ID, (uint8_t*)buf, len);
-}
-
-void send_ping_reply(route_entry_t *r_entry, uint16_t dst_addr)
-{
-    route_ctrl_hdr hdr;
-    hdr.magic = ROUTE_CTRL_MAGIC;
-    hdr.type = ROUTE_CTRL_PING_REPLY;
-    hdr.id = random(1, 65535);
-    size_t len = 0;
-    memcpy(buf, &hdr, sizeof(hdr));
-    len += sizeof(hdr);
-    memcpy(buf + len, r_entry, OFFSET(route_entry_t, path));
-    len += OFFSET(route_entry_t, path);
-    memcpy(buf + len, r_entry->path, r_entry->hops * sizeof(uint16_t));
-    len += r_entry->hops * sizeof(uint16_t);
-    tx_build(dst_addr, (uint8_t*)buf, len);
-}
-
-uint16_t visited_list[VISITED_SIZE];
-int visited_pos;
-uint32_t last_ping_time;
-
-void route_dispatch(uint8_t *frm)
-{
-    route_ctrl_hdr *hdr = (route_ctrl_hdr*)&frm[sizeof(tx_header)];
-    route_entry_t *r_entry = (route_entry_t*)&frm[sizeof(tx_header) + sizeof(route_ctrl_hdr)];
-    switch (hdr->type) {
-    case ROUTE_CTRL_PING:
-        Serial.print("received ping: hops = ");
-        Serial.print(r_entry->hops);
-        Serial.print(" ");
-        Serial.print(r_entry->path[0]);
-        for (int i = 1; i < r_entry->hops; i++) {
-            Serial.print(" -> ");
-            Serial.print(r_entry->path[i]);
-        }
-        if (r_entry->dst_addr == node_id) {
-            Serial.print(" -> ");
-            Serial.println(r_entry->dst_addr);
-            if (r_entry->hops >= ROUTE_MAX_HOPS) break;
-            Serial.print("sending ping reply to ");
-            Serial.println(r_entry->path[r_entry->hops - 1]);
-            route_entry_t new_entry;
-            new_entry.dst_addr = r_entry->path[0];
-            new_entry.hops = r_entry->hops + 1;
-            for (int i = 0; i < r_entry->hops; i++)
-                new_entry.path[i] = r_entry->path[i];
-            new_entry.path[r_entry->hops] = node_id;
-            send_ping_reply(&new_entry, r_entry->path[r_entry->hops - 1]);
-        } else {
-            Serial.print(" -> ... -> ");
-            Serial.println(r_entry->dst_addr);
-
-            bool visited = false;
-            for (int i = 0; i < VISITED_SIZE; i++) {
-                if (visited_list[i] == hdr->id) { visited = true; break; }
-            }
-            if (visited) break;
-            visited_list[visited_pos] = hdr->id;
-            visited_pos = (visited_pos + 1) % VISITED_SIZE;
-
-            if (r_entry->hops >= ROUTE_MAX_HOPS) break;
-            Serial.println("rebroadcasting ping");
-            route_entry_t new_entry;
-            new_entry.dst_addr = r_entry->dst_addr;
-            new_entry.hops = r_entry->hops + 1;
-            for (int i = 0; i < r_entry->hops; i++)
-                new_entry.path[i] = r_entry->path[i];
-            new_entry.path[r_entry->hops] = node_id;
-            send_ping(&new_entry, hdr->id);
-        }
-        break;
-    case ROUTE_CTRL_PING_REPLY:
-        Serial.println("received ping reply");
-        if (r_entry->dst_addr == node_id) {
-            uint32_t rtt = micros() - last_ping_time;
-            Serial.print("rtt = ");
-            Serial.print(rtt / 1000.0);
-            Serial.println("ms");
-            Serial.print("hops = ");
-            Serial.print(r_entry->hops);
-            Serial.print(" ");
-            Serial.print(r_entry->path[0]);
-            for (int i = 1; i < r_entry->hops; i++) {
-                Serial.print(" -> ");
-                Serial.print(r_entry->path[i]);
-            }
-            Serial.println();
-        } else {
-            // TODO
-        }
-        break;
+    for(i = 0;i < DISCO_QLEN;i++) {
+	disco_query_vec[i].target_addr = 0xFFFF;
+	disco_broadcast_vec[i].target_addr = 0xFFFF;
     }
+    disco_query_dispatch_idx = 0;
+    disco_broadcast_dispatch_idx = 0;
+
+    return 0;
+}
+int disco_query(uint16_t target_addr,uint16_t version) {
+    struct disco_query query;
+
+    query.hdr.magic = DISCO_CTRL_MAGIC;
+    query.hdr.type = DISCO_CTRL_QUERY;
+    query.target_addr = target_addr;
+    query.version = version;
+
+    tx_build(BROADCAST_ID,(uint8_t*)&query,sizeof(query));
+    return 0;
+}
+int disco_broadcast(uint16_t target_addr,uint16_t version) {
+    struct disco_broadcast broadcast;
+
+    broadcast.hdr.magic = DISCO_CTRL_MAGIC;
+    broadcast.hdr.type = DISCO_CTRL_QUERY;
+    broadcast.target_addr = target_addr;
+    broadcast.version = version;
+
+    tx_build(BROADCAST_ID,(uint8_t*)&broadcast,sizeof(broadcast));
+    return 0;
 }
 
-void route_setup()
-{
-    route_state = ROUTE_STATE_IDLE;
-    for (int i = 0; i < VISITED_SIZE; i++) visited_list[i] = 0;
-    visited_pos = 0;
-}
+int disco_query_dispatch() {
+    int i;
+    int idx = -1;
 
-void route_loop()
-{
-    if (route_state == ROUTE_STATE_IDLE && Serial.available()) {
-        size_t len = Serial.readBytes(buf, 128);
-        buf[len] = 0;
-        uint16_t ping_dst_addr = atoi(buf);
-        route_entry_t new_entry;
-        new_entry.dst_addr = ping_dst_addr;
-        new_entry.hops = 1;
-        new_entry.path[0] = node_id;
-        uint16_t ping_id = random(1, 65535);
-        send_ping(&new_entry, ping_id);
-        last_ping_time = micros();
-        visited_list[visited_pos] = ping_id;
-        visited_pos = (visited_pos + 1) % VISITED_SIZE;
+    for(i = 0;i < DISCO_QLEN;i++) {
+	disco_query_dispatch_idx = (disco_query_dispatch_idx + 1) % DISCO_QLEN;
+	if(disco_query_vec[disco_query_dispatch_idx].target_addr != 0xFFFF) {
+	    idx = disco_query_dispatch_idx;
+	    break;
+	}
     }
+    if(idx == -1) {
+	return -1;
+    }
+
+    disco_query(disco_query_vec[idx].target_addr,disco_query_vec[idx].version);
+
+    return 0;
 }
+int disco_broadcast_dispatch() {
+    int i;
+    int idx = -1;
 
+    for(i = 0;i < DISCO_QLEN;i++) {
+	disco_broadcast_dispatch_idx = (disco_broadcast_dispatch_idx + 1) % DISCO_QLEN;
+	if(disco_broadcast_vec[disco_broadcast_dispatch_idx].target_addr != 0xFFFF) {
+	    idx = disco_broadcast_dispatch_idx;
+	    break;
+	}
+    }
+    if(idx == -1) {
+	return -1;
+    }
 
-/**************** end of route section ****************/
+    disco_broadcast(disco_broadcast_vec[idx].target_addr,disco_broadcast_vec[idx].version);
 
+    disco_broadcast_vec[idx].counter -= 1;
+    if(disco_broadcast_vec[idx].counter <= 0) {
+	disco_broadcast_vec[idx].target_addr = 0xFFFF;
+    }
+    return 0;
+}
+int disco_query_add(uint16_t target_addr,uint16_t version) {
+    int i;
+
+    for(i = 0;i < DISCO_QLEN;i++) {
+	if(disco_query_vec[i].target_addr == 0xFFFF) {
+	    disco_query_vec[i].target_addr = target_addr;
+	    disco_query_vec[i].version = version;
+	    break;
+	}
+    }
+    if(i == DISCO_QLEN) {
+	return -1;
+    }
+    return 0;
+}
+int disco_broadcast_add(uint16_t target_addr,uint16_t version) {
+    int i;
+
+    for(i = 0;i < DISCO_QLEN;i++) {
+	if(disco_broadcast_vec[i].target_addr == 0xFFFF) {
+	    disco_broadcast_vec[i].target_addr = target_addr;
+	    disco_broadcast_vec[i].version = version;
+	    break;
+	}
+    }
+    if(i == DISCO_QLEN) {
+	return -1;
+    }
+    return 0;
+}
 
 void setup() {
     struct tx_header *tx_hdr;
@@ -406,8 +368,6 @@ void setup() {
     ZigduinoRadio.attachReceiveFrame(rx_hlr);
 
     for (int i = 0; i < NEIGHBOR_TABLE_SIZE; i++) neighbor_lastalive[i] = 0;
-
-    route_setup();
 }
 
 int okack = 0;
@@ -420,8 +380,6 @@ void loop() {
     if(rx.qfront != rx.qback) {
         rx_dispatch();
     }
-
-    route_loop();
 
     ret = tx_state();
     if(ret == 1) {
