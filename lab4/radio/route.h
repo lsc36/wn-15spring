@@ -31,6 +31,7 @@ struct route_ctrl_hdr {
 #define PING_BUF_SIZE 16
 
 struct ping_hdr_t {
+    uint16_t magic;
     uint8_t type;
     uint16_t src_addr;
     uint16_t target_addr;
