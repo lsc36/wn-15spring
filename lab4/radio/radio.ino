@@ -255,8 +255,17 @@ void route_dispatch(uint8_t *frm)
 {
     route_ctrl_hdr *hdr = (route_ctrl_hdr*)&frm[sizeof(tx_header)];
     route_entry_t *r_entry = (route_entry_t*)&frm[sizeof(tx_header) + sizeof(route_ctrl_hdr)];
+    bool visited;
     switch (hdr->type) {
     case ROUTE_CTRL_PING:
+        visited = false;
+        for (int i = 0; i < VISITED_SIZE; i++) {
+            if (visited_list[i] == hdr->id) { visited = true; break; }
+        }
+        if (visited) break;
+        visited_list[visited_pos] = hdr->id;
+        visited_pos = (visited_pos + 1) % VISITED_SIZE;
+
         Serial.print("received ping: hops = ");
         Serial.print(r_entry->hops);
         Serial.print(" ");
@@ -281,14 +290,6 @@ void route_dispatch(uint8_t *frm)
         } else {
             Serial.print(" -> ... -> ");
             Serial.println(r_entry->dst_addr);
-
-            bool visited = false;
-            for (int i = 0; i < VISITED_SIZE; i++) {
-                if (visited_list[i] == hdr->id) { visited = true; break; }
-            }
-            if (visited) break;
-            visited_list[visited_pos] = hdr->id;
-            visited_pos = (visited_pos + 1) % VISITED_SIZE;
 
             if (r_entry->hops >= ROUTE_MAX_HOPS) break;
             route_entry_t new_entry;
@@ -319,6 +320,7 @@ void route_dispatch(uint8_t *frm)
                 Serial.print(r_entry->path[i]);
             }
             Serial.println();
+        } else if (r_entry->dst_addr == node_id) {
         } else {
             uint16_t dst_addr = 0;
             for (int i = 1; i < r_entry->hops; i++) {
