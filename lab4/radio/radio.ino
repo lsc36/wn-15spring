@@ -28,7 +28,7 @@ struct tx_ack {
 };
 #pragma pack(pop)
 
-#define QLEN 32
+#define QLEN 16
 #define MAX_RETRY 5
 struct tx_data {
     uint8_t buffer[QLEN][64];
@@ -54,6 +54,8 @@ struct tx_ack pkt_tx_ack;
 #define NEIGHBOR_TABLE_SIZE 64
 #define NEIGHBOR_TABLE_MASK (NEIGHBOR_TABLE_SIZE - 1)
 uint32_t neighbor_lastalive[NEIGHBOR_TABLE_SIZE];
+
+char buf[64];
 
 uint16_t get_checksum(uint8_t *data,int len) {
     int i;
@@ -240,7 +242,6 @@ void send_route_request(route_entry_t *r_entry)
     route_ctrl_hdr hdr;
     hdr.magic = ROUTE_CTRL_MAGIC;
     hdr.type = ROUTE_CTRL_REQUEST;
-    uint8_t buf[256];
     size_t len = 0;
     memcpy(buf, &hdr, sizeof(hdr));
     len += sizeof(hdr);
@@ -248,7 +249,7 @@ void send_route_request(route_entry_t *r_entry)
     len += OFFSET(route_entry_t, path);
     memcpy(buf + len, r_entry->path, r_entry->hops * sizeof(uint16_t));
     len += r_entry->hops * sizeof(uint16_t);
-    tx_build(BROADCAST_ID, buf, len);
+    tx_build(BROADCAST_ID, (uint8_t*)buf, len);
 }
 
 void send_ping()
@@ -261,6 +262,38 @@ void route_dispatch(uint8_t *frm)
     route_entry_t *r_entry = (route_entry_t*)&frm[sizeof(tx_header) + sizeof(route_ctrl_hdr)];
     switch (hdr->type) {
     case ROUTE_CTRL_REQUEST:
+        Serial.print("received route request: hops = ");
+        Serial.print(r_entry->hops);
+        Serial.print(" ");
+        Serial.print(r_entry->path[0]);
+        for (int i = 1; i < r_entry->hops; i++) {
+            Serial.print(" -> ");
+            Serial.print(r_entry->path[i]);
+        }
+        if (r_entry->dst_addr == node_id) {
+            Serial.print(" -> ");
+            Serial.println(r_entry->dst_addr);
+        } else {
+            Serial.print(" -> ... -> ");
+            Serial.println(r_entry->dst_addr);
+
+            bool visited = false;
+            for (int i = 0; i < r_entry->hops; i++) {
+                if (r_entry->path[i] == node_id) { visited = true; break; }
+            }
+            if (visited) break;
+
+            if (r_entry->hops >= ROUTE_MAX_HOPS) break;
+            route_entry_t *new_entry = (route_entry_t*)buf;
+            new_entry->dst_addr = r_entry->dst_addr;
+            new_entry->hops = r_entry->hops + 1;
+            Serial.print("new entry: hops = ");
+            Serial.println(new_entry->hops);
+            for (int i = 0; i < r_entry->hops; i++)
+                new_entry->path[i] = r_entry->path[i];
+            new_entry->path[r_entry->hops] = node_id;
+            send_route_request(new_entry);
+        }
         break;
     case ROUTE_CTRL_REPLY:
         break;
@@ -278,7 +311,6 @@ void route_setup()
 void route_loop()
 {
     if (route_state == ROUTE_STATE_IDLE && Serial.available()) {
-        char buf[128];
         size_t len = Serial.readBytes(buf, 128);
         buf[len] = 0;
         ping_dst_addr = atoi(buf);
