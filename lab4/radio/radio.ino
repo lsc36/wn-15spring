@@ -116,8 +116,11 @@ int rx_dispatch() {
         struct tx_header *rx_hdr = (struct tx_header*)rx.buffer[qid];
         Serial.print("received frame from ");
         Serial.println(rx_hdr->src_addr);
-        pkt_tx_ack.seq = rx_hdr->seq;
-        ZigduinoRadio.txFrame((uint8_t*)&pkt_tx_ack,sizeof(pkt_tx_ack));
+
+	if(rx_hdr->dst_addr != BROADCAST_ID) {
+	    pkt_tx_ack.seq = rx_hdr->seq;
+	    ZigduinoRadio.txFrame((uint8_t*)&pkt_tx_ack,sizeof(pkt_tx_ack));
+	}
 
         if (*(uint16_t*)&rx.buffer[qid][sizeof(tx_header)] == DISCO_CTRL_MAGIC) {
 	    disco_rx_dispatch(&rx.buffer[qid][sizeof(tx_header)]);
@@ -203,7 +206,11 @@ int tx_dispatch() {
     int qid = tx.qfront;
     struct tx_header *tx_hdr = (struct tx_header*)tx.buffer[qid];
     Serial.print("!");
-    tx.state = 3;
+    if(tx_hdr->dst_addr != BROADCAST_ID) {
+	tx.state = 3;
+    } else {
+	tx.state = 5;
+    }
     ZigduinoRadio.txFrame(tx.buffer[qid],tx.len[qid]);
     tx_hdr->seq--;
     return 0;
@@ -232,6 +239,14 @@ int disco_route_invalidate(struct disco_route_table_entry *entry) {
 int disco_route_rx_query(uint16_t target_addr,uint16_t version) {
     int i;
 
+    Serial.print("rx_query:");
+    Serial.println(target_addr);
+
+    if(target_addr == node_id) {
+	disco_broadcast_add(node_id,version);
+	return 0;
+    }
+
     for(i = 0;i < DISCO_LEN;i++) {
 	if(disco_route_table[i].target_addr == target_addr) {
 	    struct disco_route_table_entry *entry = &disco_route_table[i];
@@ -251,6 +266,15 @@ int disco_route_rx_broadcast(uint16_t target_addr,uint16_t src_addr,uint16_t ver
     int i;
     int empty_idx = -1;
     struct disco_route_table_entry *entry;
+
+    if(target_addr == node_id) {
+	return 0;
+    }
+    
+    Serial.print("rx_broadcast:");
+    Serial.print(target_addr);
+    Serial.print(" version:");
+    Serial.println(version);
     
     for(i = 0;i < DISCO_LEN;i++) {
 	if(disco_route_table[i].target_addr == target_addr) {
@@ -266,6 +290,7 @@ int disco_route_rx_broadcast(uint16_t target_addr,uint16_t src_addr,uint16_t ver
 		entry->dst_addr = src_addr;
 		entry->version = version;
 
+		disco_query_del(target_addr);
 		disco_broadcast_add(target_addr,entry->version);
 	    }
 
@@ -288,6 +313,7 @@ int disco_route_rx_broadcast(uint16_t target_addr,uint16_t src_addr,uint16_t ver
     entry->dst_addr = src_addr;
     entry->version = version;
 
+    disco_query_del(target_addr);
     disco_broadcast_add(target_addr,entry->version);
 
     return 0;
@@ -327,11 +353,15 @@ int disco_broadcast(uint16_t target_addr,uint16_t version) {
     struct disco_broadcast broadcast;
 
     broadcast.hdr.magic = DISCO_CTRL_MAGIC;
-    broadcast.hdr.type = DISCO_CTRL_QUERY;
+    broadcast.hdr.type = DISCO_CTRL_BROADCAST;
     broadcast.target_addr = target_addr;
     broadcast.src_addr = node_id;
     broadcast.version = version;
 
+    Serial.print("broadcast:");
+    Serial.print(target_addr);
+    Serial.print(" version:");
+    Serial.println(version);
     tx_build(BROADCAST_ID,(uint8_t*)&broadcast,sizeof(broadcast));
     return 0;
 }
@@ -450,6 +480,41 @@ int disco_broadcast_del(uint16_t target_addr) {
     return 0;
 }
 
+int disco_route_display() {
+    int i;
+    for(i = 0;i < DISCO_LEN;i++) {
+	if(disco_route_table[i].target_addr != 0xFFFF) {
+	    struct disco_route_table_entry *entry = &disco_route_table[i];
+
+	    Serial.print("target_addr:");
+	    Serial.print(entry->target_addr);
+	    Serial.print(" dst_addr:");
+	    Serial.print(entry->dst_addr);
+	    Serial.print(" version:");
+	    Serial.println(entry->version);
+	}
+    }
+    return 0;
+}
+uint16_t disco_route_get(uint16_t target_addr) {
+    int i;
+
+    if(target_addr == node_id) {
+	return node_id;
+    }
+
+    for(i = 0;i < DISCO_LEN;i++) {
+	if(disco_route_table[i].target_addr == target_addr) {
+	    struct disco_route_table_entry *entry = &disco_route_table[i];
+	    return entry->dst_addr;
+	}
+    }
+
+    disco_query_add(target_addr,1);
+
+    return -1;
+}
+
 void setup() {
     struct tx_header *tx_hdr;
 
@@ -486,10 +551,12 @@ void setup() {
     ZigduinoRadio.setParam(phyPanId,(uint16_t)PAN_ID);
     ZigduinoRadio.setParam(phyShortAddr,(uint16_t)node_id);
     ZigduinoRadio.setParam(phyCCAMode,(uint8_t)0x3);
-    Serial.begin(9600);
+    Serial.begin(115200);
 
     Serial.print("node_id = ");
     Serial.println(node_id);
+
+    disco_init();
 
     ZigduinoRadio.attachReceiveFrame(rx_hlr);
 }
@@ -497,6 +564,7 @@ void setup() {
 int okack = 0;
 int noack = 0;
 uint16_t counter = 0;
+char buf[32];
 
 void loop() {
     int ret;
@@ -505,14 +573,27 @@ void loop() {
         rx_dispatch();
     }
 
+    if(Serial.available()) {
+	size_t len = Serial.readBytes(buf,32);
+	uint16_t ping_dst_addr = atoi(buf);
+	disco_route_get(ping_dst_addr);
+    }
+
     if(counter == 0) {
         Serial.print(okack);
         Serial.print(" ");
         Serial.println(noack);
+
+	disco_route_display();
+
     } else if(counter == 1) {
+
 	disco_query_dispatch();
+
     } else if(counter == 32768) {
+
 	disco_broadcast_dispatch();
+
     }
     counter += 1;
 
