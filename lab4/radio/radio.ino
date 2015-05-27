@@ -252,6 +252,21 @@ void send_route_request(route_entry_t *r_entry)
     tx_build(BROADCAST_ID, (uint8_t*)buf, len);
 }
 
+void send_route_reply(route_entry_t *r_entry)
+{
+    route_ctrl_hdr hdr;
+    hdr.magic = ROUTE_CTRL_MAGIC;
+    hdr.type = ROUTE_CTRL_REPLY;
+    size_t len = 0;
+    memcpy(buf, &hdr, sizeof(hdr));
+    len += sizeof(hdr);
+    memcpy(buf + len, r_entry, OFFSET(route_entry_t, path));
+    len += OFFSET(route_entry_t, path);
+    memcpy(buf + len, r_entry->path, r_entry->hops * sizeof(uint16_t));
+    len += r_entry->hops * sizeof(uint16_t);
+    tx_build(BROADCAST_ID, (uint8_t*)buf, len);
+}
+
 void send_ping()
 {
 }
@@ -273,6 +288,8 @@ void route_dispatch(uint8_t *frm)
         if (r_entry->dst_addr == node_id) {
             Serial.print(" -> ");
             Serial.println(r_entry->dst_addr);
+            Serial.println("sending route reply");
+            // TODO
         } else {
             Serial.print(" -> ... -> ");
             Serial.println(r_entry->dst_addr);
