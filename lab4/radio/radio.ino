@@ -564,6 +564,7 @@ void setup() {
 int okack = 0;
 int noack = 0;
 uint16_t counter = 0;
+uint16_t disco_clock = 0;
 char buf[32];
 
 void loop() {
@@ -586,16 +587,19 @@ void loop() {
 
 	disco_route_display();
 
-    } else if(counter == 1) {
+    }
+    counter += 1;
+
+    if(disco_clock == 0) {
 
 	disco_query_dispatch();
 
-    } else if(counter == 32768) {
+    } else if(disco_clock == 2048) {
 
 	disco_broadcast_dispatch();
 
     }
-    counter += 1;
+    disco_clock = (disco_clock + 1) & 0xFFF;
 
     ret = tx_state();
     if(ret == 1) {
