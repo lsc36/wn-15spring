@@ -37,8 +37,9 @@ struct disco_route_table_entry {
     uint16_t version;
 };
 struct disco_callback_entry {
-    void (*callback)(uint16_t,uint16_t);
     uint16_t target_addr;
+    void (*callback)(uint16_t,void*);
+    void *param;
 };
 
 struct disco_query_entry disco_query_vec[DISCO_LEN];

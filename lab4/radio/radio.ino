@@ -247,7 +247,7 @@ int disco_route_callback() {
                 struct disco_callback_entry *cb_entry = &disco_callback_table[j];
 
                 if(cb_entry->callback != NULL && cb_entry->target_addr == entry->target_addr) {
-                    cb_entry->callback(entry->dst_addr,entry->target_addr);
+                    cb_entry->callback(entry->dst_addr,cb_entry->param);
                     cb_entry->callback = NULL;
                 }
             }
@@ -519,26 +519,27 @@ int disco_route_display() {
     }
     return 0;
 }
-int disco_route_get(uint16_t target_addr,void (*callback)(uint16_t,uint16_t)) {
+int disco_route_get(uint16_t target_addr,void (*callback)(uint16_t,void*),void *param) {
     int i;
 
     if(target_addr == node_id) {
-        callback(node_id,target_addr);
+        callback(node_id,param);
         return node_id;
     }
 
     for(i = 0;i < DISCO_LEN;i++) {
         if(disco_route_table[i].target_addr == target_addr) {
             struct disco_route_table_entry *entry = &disco_route_table[i];
-            callback(entry->dst_addr,target_addr);
+            callback(entry->dst_addr,param);
             return 0;
         }
     }
 
     for(i = 0;i < DISCO_LEN;i++) {
         if(disco_callback_table[i].callback == NULL) {
-            disco_callback_table[i].callback = callback;
             disco_callback_table[i].target_addr = target_addr;
+            disco_callback_table[i].callback = callback;
+            disco_callback_table[i].param = param;
 
             disco_query_add(target_addr,1);
 
@@ -601,11 +602,11 @@ uint16_t counter = 0;
 uint16_t disco_clock = 0;
 char buf[32];
 
-void test_callback(uint16_t dst_addr,uint16_t target_addr) {
+void test_callback(uint16_t dst_addr,void *param) {
     Serial.print("Get dst_addr:");
     Serial.print(dst_addr);
     Serial.print(" to ");
-    Serial.println(target_addr);
+    Serial.println((int)param);
 }
 
 void loop() {
@@ -618,7 +619,7 @@ void loop() {
     if(Serial.available()) {
         size_t len = Serial.readBytes(buf,32);
         uint16_t ping_dst_addr = atoi(buf);
-        disco_route_get(ping_dst_addr,test_callback);
+        disco_route_get(ping_dst_addr,test_callback,(void*)ping_dst_addr);
     }
 
     if(counter == 0) {
