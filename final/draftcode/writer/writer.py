@@ -36,8 +36,8 @@ fourcc = cv2.VideoWriter_fourcc(*'I420')
 out = cv2.VideoWriter('/x/test.avi',fourcc,T_FPS,(1920,1080))
 
 
-chess_b = np.full((32,32),-1)
-chess_w = np.full((32,32),1)
+chess_b = np.full((16,16),-1)
+chess_w = np.full((16,16),1)
 
 chess = np.concatenate(
         [np.concatenate([chess_b,chess_w] * 64),np.concatenate([chess_w,chess_b] * 64)] * 64,
@@ -49,7 +49,7 @@ chess = chess[0:CH,0:CW]
 chess_inv = chess_inv[0:CH,0:CW]
 chess_r = [chess,chess_inv]
 
-seq = [0,1] * 1000000
+seq = ([0,1] * 30 + [-1] * 60) * 100000
 index = 0
 
 while index < 3000:
@@ -61,17 +61,18 @@ while index < 3000:
         print(index)
         frame = cv2.cvtColor(sframe,cv2.COLOR_RGB2HSV).astype(np.int)
 
-        ch = chess_r[seq[index]]
-        bri = frame[:,:,2]
-        sta = frame[:,:,1]
-        bri = np.clip(bri + ch * 10,0,255)
-        sta2 = np.clip(sta + bri * 0.05 * ch,0,255)
-        #sta2 = np.clip(sta + (((bri - 128) // 32) ** 5) * ch * 0.1,0,255)
-        frame[:,:,2] = bri
-        #cv2.imshow('b',cv2.cvtColor(frame.astype(np.uint8),cv2.COLOR_HSV2RGB))
-        #frame[:,:,1] = sta1
-        #cv2.imshow('x1',cv2.cvtColor(frame.astype(np.uint8),cv2.COLOR_HSV2RGB))
-        frame[:,:,1] = sta2
+        if seq[index] != -1:
+            ch = chess_r[seq[index]]
+            bri = frame[:,:,2]
+            sta = frame[:,:,1]
+            bri = np.clip(bri + ch * 30,0,255)
+            sta2 = np.clip(sta + bri * 0.05 * ch,0,255)
+            #sta2 = np.clip(sta + (((bri - 128) // 32) ** 5) * ch * 0.1,0,255)
+            frame[:,:,2] = bri
+            #cv2.imshow('b',cv2.cvtColor(frame.astype(np.uint8),cv2.COLOR_HSV2RGB))
+            #frame[:,:,1] = sta1
+            #cv2.imshow('x1',cv2.cvtColor(frame.astype(np.uint8),cv2.COLOR_HSV2RGB))
+            frame[:,:,1] = sta2
         frame = cv2.cvtColor(frame.astype(np.uint8),cv2.COLOR_HSV2RGB)
         #cv2.imshow('x2',frame)
         #cv2.waitKey(0)

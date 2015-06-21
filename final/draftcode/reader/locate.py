@@ -22,6 +22,8 @@ def detect_fix(index,sframe):
 
     frame = cv2.Canny(sframe,100,400)
     _,conto,hier = cv2.findContours(frame.copy(),cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
+    if hier is None:
+        return None
     hier = hier[0]
 
     hierlog = {}
@@ -111,7 +113,17 @@ def detect_fix(index,sframe):
                 [PAD_W + LOCATE_SIZE / 2,H - PAD_H - LOCATE_SIZE / 2]],dtype = np.float32))
     return cv2.warpPerspective(sframe,mat,(W,H))
 
-invc = cv2.VideoCapture('MOV_0026.MP4')
+
+chess_b = np.full((16,16),0)
+chess_w = np.full((16,16),255)
+chess = np.concatenate(
+        [np.concatenate([chess_b,chess_w] * 16),np.concatenate([chess_w,chess_b] * 16)] * 16,
+        axis = 1)
+chess_inv = np.concatenate(
+        [np.concatenate([chess_w,chess_b] * 16),np.concatenate([chess_b,chess_w] * 16)] * 16,
+        axis = 1)
+
+invc = cv2.VideoCapture('MOV_0024.MP4')
 fps = invc.get(cv2.CAP_PROP_FPS)
 print(fps)
 fourcc = cv2.VideoWriter_fourcc(*'X264')
@@ -126,12 +138,29 @@ while invc.isOpened():
     index += 1
     
     bframe = detect_fix(0,invc.read()[1])
+    if bframe is None:
+        continue
 
     bframe = bframe[CPAD_H:H - CPAD_H,CPAD_W:W - CPAD_W].astype(np.uint8)
-    bframe = cv2.cvtColor(bframe,cv2.COLOR_RGB2HSV)[:,:,2]
-    #bframe = cv2.adaptiveThreshold(bframe,200,cv2.ADAPTIVE_THRESH_MEAN_C,cv2.THRESH_BINARY,17,0)
-    cv2.imshow('b',bframe)
+    bframe = cv2.cvtColor(bframe,cv2.COLOR_RGB2HSV)
+    bframe = bframe[:512,:512,2]
+
+    dcta = cv2.dct((chess - 128).astype(np.float))
+    #dframe = (dct / np.max(dct) * 255).astype(np.uint8)
+    dcta[0,0] = 0.0
+
+    dctb = cv2.dct((bframe - 128).astype(np.float))
+    #dct -= np.min(dct)
+    #pframe = (dct / np.max(dct) * 255).astype(np.uint8)
+
+    print(dcta)
+    print(dctb)
+    print(np.sum(dcta * dctb))
+
+    cv2.imshow('x',bframe)
     cv2.waitKey(0)
+
+    #bframe = cv2.adaptiveThreshold(bframe,200,cv2.ADAPTIVE_THRESH_MEAN_C,cv2.THRESH_BINARY,17,0)
 
     aframe = bframe
 
