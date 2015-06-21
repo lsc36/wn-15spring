@@ -15,12 +15,12 @@ CPAD_W = PAD_W + LOCATE_SIZE / 7 * 8
 O_FPS = 30
 T_FPS = 60
 
-DETECT_THS = 2000
+DETECT_THS = 500
 prev_detect_locater = None
-def detect_fix(sframe):
+def detect_fix(index,sframe):
     global prev_detect_locater
 
-    frame = cv2.Canny(sframe,200,300)
+    frame = cv2.Canny(sframe,100,400)
     _,conto,hier = cv2.findContours(frame.copy(),cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
     hier = hier[0]
 
@@ -34,7 +34,7 @@ def detect_fix(sframe):
 
     poss = set()
     for idx,deep in hierlog.items():
-        if deep < 3 or deep > 6:
+        if deep != 6:
             continue
 
         coidx = idx
@@ -70,7 +70,6 @@ def detect_fix(sframe):
     if len(locater) > 4:
         c = cv2.convexHull(np.array(locater,dtype = np.float32),clockwise = True,returnPoints = False)[:,0]
         locater = list(map(lambda x: x[1],filter(lambda x: x[0] in c,enumerate(locater))))
-        print(locater)
 
     if len(locater) < 3:
         if prev_detect_locater is None:
@@ -101,6 +100,8 @@ def detect_fix(sframe):
     locater[3] = l[1]
     prev_detect_locater = locater
 
+    print(locater)
+
     mat = cv2.getPerspectiveTransform(
             np.array(locater,dtype = np.float32),
             np.array([
@@ -110,21 +111,35 @@ def detect_fix(sframe):
                 [PAD_W + LOCATE_SIZE / 2,H - PAD_H - LOCATE_SIZE / 2]],dtype = np.float32))
     return cv2.warpPerspective(sframe,mat,(W,H))
 
-invc = cv2.VideoCapture('VID_20150618_023812.mp4')
+invc = cv2.VideoCapture('MOV_0026.MP4')
+fps = invc.get(cv2.CAP_PROP_FPS)
+print(fps)
 fourcc = cv2.VideoWriter_fourcc(*'X264')
-fixc = cv2.VideoWriter('fix.avi',fourcc,30,(CW,CH))
+fixc = cv2.VideoWriter('fix.avi',fourcc,fps,(CW,CH))
 
 index = 0
 while invc.isOpened():
-    _,sframe = invc.read()
-    if sframe is None:
-        break
+    #_,sframe = invc.read()
+    #if sframe is None:
+    #    break
     print(index)
     index += 1
+    
+    bframe = detect_fix(0,invc.read()[1])
 
-    fframe = detect_fix(sframe)
-    fixc.write(fframe[CPAD_H:H - CPAD_H,CPAD_W:W - CPAD_W])
-    #cv2.waitKey(0)
+    bframe = bframe[CPAD_H:H - CPAD_H,CPAD_W:W - CPAD_W].astype(np.uint8)
+    bframe = cv2.cvtColor(bframe,cv2.COLOR_RGB2HSV)[:,:,2]
+    #bframe = cv2.adaptiveThreshold(bframe,200,cv2.ADAPTIVE_THRESH_MEAN_C,cv2.THRESH_BINARY,17,0)
+    cv2.imshow('b',bframe)
+    cv2.waitKey(0)
+
+    aframe = bframe
+
+    #fframe = detect_fix(index,sframe)
+    #if fframe is None:
+    #    continue
+
+    #fixc.write(fframe[CPAD_H:H - CPAD_H,CPAD_W:W - CPAD_W])
 
 fixc.release()
 cv2.destroyAllWindows()
