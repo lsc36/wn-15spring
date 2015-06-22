@@ -1,6 +1,7 @@
 import cv2
 import numpy as np
 import time
+from reedsolo import RSCodec
 
 H = 1080
 W = 1920
@@ -161,50 +162,91 @@ def genpat(pattern):
                 index += 1
     return d
 
+def gends(seed):
+    np.random.seed(seed)
+    keys = []
+    for j in range(256):
+        v = []
+        for i in range((1 + 30) * 30 // 2):
+            v.append(np.random.normal(0,10000))
+        keys.append(v)
+    keys = np.array(keys)
+    keys = gs(keys) * 1000
+    ds = []
+    for key in keys:
+        ds.append(genpat(key))
+    return ds
+
+def genkframe(seed):
+    np.random.seed(seed)
+    keys = []
+    for j in range(256):
+        v = []
+        for i in range((1 + 30) * 30 // 2):
+            v.append(np.random.normal(0,10000))
+        keys.append(v)
+    keys = np.array(keys)
+    keys = gs(keys) * 1000
+    kframes = []
+    for key in keys:
+        print(np.max(key))
+        print(np.min(key))
+        d = genpat(key)
+        kframe = cv2.dct(d,cv2.DCT_INVERSE)
+        kframes.append(kframe)
+        print(np.max(kframe))
+        print(np.min(kframe))
+        #cv2.imshow('d',(kframe + 128).astype('uint8'))
+        #cv2.waitKey(0)
+    return kframes
+
+kframes = genkframe(23)
+
 def extract(sframe):
     data = []
     for y in range(0,CH,120):
         for x in range(0,CW,120):
             ma = 0
             maidx = 0
-            e = cv2.dct(sframe[y:y + 120,x:x + 120])
-            for idx,d in enumerate(ds):
+            e = sframe[y:y + 120,x:x + 120]
+            for idx,d in enumerate(kframes):
                 v = abs(np.sum(d * e))
                 if v > ma:
                     ma = v
                     maidx = idx
             data.append(maidx)
-    return data
 
-invc = cv2.VideoCapture('MVI_9072.MOV')
+    return bytearray(data)
+
+def demodul(data,size):
+    assert(size % 7 != 0)
+
+    '''
+    ret = bytearray(size)
+    ndata = bytearray(data)
+    idx = (-7) % size
+    for i in range(size - 1,-1,-1):
+        for j in range(8):
+            ret[i] = (ret[i] << 1) | (ndata[idx] & 1)
+            ndata[idx] = (ndata[idx] >> 1)
+            idx = (idx - 7) % size
+    '''
+
+    rsc = RSCodec(size - 43)
+    try:
+        ret = rsc.decode(data)
+    except:
+        ret = None
+
+    return ret
+
+invc = cv2.VideoCapture('MVI_9074.MOV')
 fps = invc.get(cv2.CAP_PROP_FPS)
 print(fps)
 fourcc = cv2.VideoWriter_fourcc(*'X264')
 fixc = cv2.VideoWriter('fix.avi',fourcc,fps,(CW,CH))
     
-'''
-chess_b = np.full((16,16),0)
-chess_w = np.full((16,16),255)
-chess = np.concatenate(
-        [np.concatenate([chess_b,chess_w] * 16),np.concatenate([chess_w,chess_b] * 16)] * 16,
-        axis = 1)
-chess_inv = np.concatenate(
-        [np.concatenate([chess_w,chess_b] * 16),np.concatenate([chess_b,chess_w] * 16)] * 16,
-        axis = 1)
-'''
-
-np.random.seed(23)
-keys = []
-for j in range(256):
-    v = []
-    for i in range((1 + 30) * 30 // 2):
-        v.append(np.random.normal(0,10000))
-    keys.append(v)
-keys = np.array(keys)
-keys = gs(keys) * 1000
-ds = []
-for key in keys:
-    ds.append(genpat(key))
+ds = gends(23)
 
 index = 0
 aframe = None
@@ -220,6 +262,9 @@ while invc.isOpened():
         continue
     #align(bframe)
 
+    if index < 100:
+        continue
+
     bframe = bframe.astype(np.uint8)
     bframe = bframe[CPAD_H:H - CPAD_H,CPAD_W:W - CPAD_W]
     bframe = cv2.cvtColor(bframe,cv2.COLOR_RGB2HSV)
@@ -229,8 +274,9 @@ while invc.isOpened():
     if aframe is not None:
         cframe = (aframe.astype(np.float) + bframe.astype(np.float)) / 2.0
         cframe = (bframe.astype(float) - cframe)
+        #cframe = bframe.astype(float) - np.mean(bframe)
 
-        print(extract(cframe))
+        print(demodul(extract(cframe),78))
         
         cv2.imshow('x',(cframe + 128).astype(np.uint8))
         cv2.waitKey(0)
@@ -239,3 +285,14 @@ while invc.isOpened():
 
 fixc.release()
 cv2.destroyAllWindows()
+
+'''
+chess_b = np.full((16,16),0)
+chess_w = np.full((16,16),255)
+chess = np.concatenate(
+        [np.concatenate([chess_b,chess_w] * 16),np.concatenate([chess_w,chess_b] * 16)] * 16,
+        axis = 1)
+chess_inv = np.concatenate(
+        [np.concatenate([chess_w,chess_b] * 16),np.concatenate([chess_b,chess_w] * 16)] * 16,
+        axis = 1)
+'''
