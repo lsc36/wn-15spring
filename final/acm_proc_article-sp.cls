@@ -834,6 +834,7 @@
 \def\ftype@copyrightbox{8}
 \def\@copyrightspace{
 \@float{copyrightbox}[b]
+\vspace*{-2em}
 \iffalse
 \begin{center}
 \setlength{\unitlength}{1pc}
