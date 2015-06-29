@@ -1,0 +1,63 @@
+\documentclass[10pt,a4paper]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{xeCJK}
+%\usepackage{indentfirst}
+\usepackage{enumitem}
+\usepackage{setspace}
+\usepackage{float}
+\usepackage{calc}
+\usepackage{amsmath}
+\setCJKmainfont{AR PL UMing TW}
+
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\lhead{WNFA Lab 4 Report}
+\chead{}
+\rhead{Group 5}
+\lfoot{}
+\cfoot{}
+\rfoot{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\footrulewidth}{0.4pt}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{.4em}
+\linespread{1.15}
+
+\begin{document}
+\thispagestyle{fancy}
+
+\begin{center}
+    \LARGE WNFA Lab 4 Report
+\end{center}
+\begin{center}\begin{tabular}{lccr}
+    Group 5: & B02902125吳哲宇 & B01902010李紹詮 & B01902048王欣維 \\
+    & B01902085邱劭同 & B01902138蔡存哲
+\end{tabular}\end{center}
+
+\section*{工作原理}
+\subsection*{MAC Protocol}
+信號發送器擁有一個狀態變數（在程式中的\texttt{tx.state}），當狀態為0時開始DIFS等待，並將狀態設為1。當狀態為1時判斷通道狀態，通道不可用時重新開始DIFS等待，若通道可用且DIFS已完成則開始等待一段backoff（固定的\texttt{BACKOFF}加上一個隨機值）。在backoff等待結束後若通道依然可用，則發送器會開始發送封包。
+
+\subsection*{Routing Algorithm}
+我們的路由採取廣播的機制，每一個收到ping封包的節點會檢查自己是否已經收過此封包，若是沒有則會將封包再次廣播出去，若已經收過就不再次廣播。再次廣播時會把自己的ID加入封包中的路徑表，藉此得知傳輸經過的路徑。回傳ping reply時直接沿著request的路徑單播回去。
+
+選擇這一個機制的原因是這個機制非常直觀，容易實作，而且就算其中一個節點被移除也不會造成太大的影響。缺點是channel會很busy，latency相對較高。
+
+\section*{遇到的問題 \& 解決方法}
+\begin{enumerate}
+    \item 在Serial印debug message很花時間，會影響protocol正常運作\\
+    Solution: 盡量不印message、提高baud rate
+    \item Zigduino本身時脈不高，用迴圈在做carrier sensing的時候取樣率不夠高\\
+    Solution: DIFS需要設在毫秒等級
+\end{enumerate}
+
+\section*{工作分配}
+\begin{itemize}[leftmargin=!,itemindent=-4em]
+    \item 吳哲宇: MAC protocol實作
+    \item 李紹詮: broadcast ping實作
+    \item 邱劭同: 測試、報告統整
+    \item 蔡存哲: 測試
+\end{itemize}
+
+\end{document}
